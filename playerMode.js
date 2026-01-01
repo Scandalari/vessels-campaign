@@ -269,6 +269,96 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
     }));
   };
 
+  // ==================== CONFIG: CLASS MANAGEMENT ====================
+  const updateClass = (index, field, value) => {
+    setPlayerCharacter(p => {
+      const newClasses = [...p.classes];
+      newClasses[index] = { ...newClasses[index], [field]: value };
+      
+      // Reset subclass if class name changes
+      if (field === 'name') {
+        newClasses[index].subclass = null;
+      }
+      
+      // Calculate new total level
+      const newLevel = newClasses.reduce((sum, c) => sum + c.level, 0);
+      
+      // Calculate new proficiency bonus
+      const newProfBonus = Math.floor((newLevel - 1) / 4) + 2;
+      
+      // Build updated character with new classes
+      const updated = { ...p, classes: newClasses, level: newLevel, proficiencyBonus: newProfBonus };
+      
+      // Recalculate spell slots
+      const slots = getPlayerSpellSlots(updated);
+      const spellSlots = {};
+      slots.forEach(s => {
+        const key = s.isPact ? `pact-${s.level}` : s.level;
+        // Preserve used count if slot existed, otherwise start fresh
+        const existingUsed = p.spellSlots?.[key]?.used || 0;
+        spellSlots[key] = { used: Math.min(existingUsed, s.max), max: s.max, level: s.level, isPact: s.isPact || false };
+      });
+      updated.spellSlots = spellSlots;
+      
+      // Recalculate class resources
+      updated.classResources = getClassResources(updated);
+      
+      return updated;
+    });
+  };
+
+  const addClass = () => {
+    if (playerCharacter.classes.length >= 2) return;
+    setPlayerCharacter(p => {
+      const newClasses = [...p.classes, { name: 'Fighter', level: 1, subclass: null }];
+      const newLevel = newClasses.reduce((sum, c) => sum + c.level, 0);
+      const newProfBonus = Math.floor((newLevel - 1) / 4) + 2;
+      
+      const updated = { ...p, classes: newClasses, level: newLevel, proficiencyBonus: newProfBonus };
+      
+      // Recalculate spell slots
+      const slots = getPlayerSpellSlots(updated);
+      const spellSlots = {};
+      slots.forEach(s => {
+        const key = s.isPact ? `pact-${s.level}` : s.level;
+        const existingUsed = p.spellSlots?.[key]?.used || 0;
+        spellSlots[key] = { used: Math.min(existingUsed, s.max), max: s.max, level: s.level, isPact: s.isPact || false };
+      });
+      updated.spellSlots = spellSlots;
+      
+      // Recalculate class resources
+      updated.classResources = getClassResources(updated);
+      
+      return updated;
+    });
+  };
+
+  const removeClass = (index) => {
+    if (playerCharacter.classes.length <= 1) return;
+    setPlayerCharacter(p => {
+      const newClasses = p.classes.filter((_, i) => i !== index);
+      const newLevel = newClasses.reduce((sum, c) => sum + c.level, 0);
+      const newProfBonus = Math.floor((newLevel - 1) / 4) + 2;
+      
+      const updated = { ...p, classes: newClasses, level: newLevel, proficiencyBonus: newProfBonus };
+      
+      // Recalculate spell slots
+      const slots = getPlayerSpellSlots(updated);
+      const spellSlots = {};
+      slots.forEach(s => {
+        const key = s.isPact ? `pact-${s.level}` : s.level;
+        const existingUsed = p.spellSlots?.[key]?.used || 0;
+        spellSlots[key] = { used: Math.min(existingUsed, s.max), max: s.max, level: s.level, isPact: s.isPact || false };
+      });
+      updated.spellSlots = spellSlots;
+      
+      // Recalculate class resources
+      updated.classResources = getClassResources(updated);
+      
+      return updated;
+    });
+  };
+
   // ==================== CONFIG: SAVING THROWS ====================
   const toggleSavingThrow = (ability) => {
     setPlayerCharacter(p => ({
@@ -641,7 +731,7 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
           <div className="bg-gray-900/50 border border-cyan-500/30 p-3 rounded">
             <div className="text-cyan-400 font-mono text-sm mb-2">BASIC INFO</div>
             <div className="grid grid-cols-4 gap-3">
-              <div>
+              <div className="col-span-2">
                 <div className="text-gray-500 font-mono text-xs mb-1">NAME</div>
                 <input type="text" value={playerCharacter.name} onChange={(e) => setPlayerCharacter(p => ({ ...p, name: e.target.value }))} className="w-full bg-gray-800 border border-cyan-500/30 text-cyan-300 px-2 py-1 font-mono text-sm" />
               </div>
@@ -651,14 +741,54 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
                   {ORIGINS.map(o => <option key={o} value={o}>{o}</option>)}
                 </select>
               </div>
-              <div>
-                <div className="text-gray-500 font-mono text-xs mb-1">LEVEL</div>
-                <input type="number" value={playerCharacter.level || 1} onChange={(e) => setPlayerCharacter(p => ({ ...p, level: parseInt(e.target.value) || 1 }))} className="w-full bg-gray-800 border border-cyan-500/30 text-cyan-300 px-2 py-1 font-mono text-sm" min={1} max={20} />
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <div className="text-gray-500 font-mono text-xs mb-1">LEVEL</div>
+                  <div className="w-full bg-gray-800 border border-cyan-500/30 text-cyan-300 px-2 py-1 font-mono text-sm text-center">{playerCharacter.level || 1}</div>
+                </div>
+                <div className="flex-1">
+                  <div className="text-gray-500 font-mono text-xs mb-1">PROF</div>
+                  <div className="w-full bg-gray-800 border border-cyan-500/30 text-cyan-300 px-2 py-1 font-mono text-sm text-center">+{playerCharacter.proficiencyBonus}</div>
+                </div>
               </div>
-              <div>
-                <div className="text-gray-500 font-mono text-xs mb-1">PROFICIENCY</div>
-                <input type="number" value={playerCharacter.proficiencyBonus} onChange={(e) => setPlayerCharacter(p => ({ ...p, proficiencyBonus: parseInt(e.target.value) || 2 }))} className="w-full bg-gray-800 border border-cyan-500/30 text-cyan-300 px-2 py-1 font-mono text-sm" min={2} max={6} />
-              </div>
+            </div>
+          </div>
+
+          {/* Classes Section */}
+          <div className="bg-gray-900/50 border border-fuchsia-500/30 p-3 rounded">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-fuchsia-400 font-mono text-sm">CLASSES</span>
+              {playerCharacter.classes.length < 2 && (
+                <button onClick={addClass} className="px-2 py-0.5 bg-gray-800/50 border border-fuchsia-500/30 text-fuchsia-300 font-mono text-xs hover:border-fuchsia-400">+ MULTICLASS</button>
+              )}
+            </div>
+            <div className="flex flex-col gap-2">
+              {playerCharacter.classes.map((cls, index) => (
+                <div key={index} className="flex items-center gap-2 bg-gray-800/50 p-2 rounded border border-fuchsia-500/20">
+                  <div className="flex-1">
+                    <div className="text-gray-500 font-mono text-xs mb-1">CLASS</div>
+                    <select value={cls.name} onChange={(e) => updateClass(index, 'name', e.target.value)} className="w-full bg-gray-900 border border-fuchsia-500/30 text-fuchsia-300 px-2 py-1 font-mono text-sm">
+                      {CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div className="w-16">
+                    <div className="text-gray-500 font-mono text-xs mb-1">LVL</div>
+                    <input type="number" value={cls.level} onChange={(e) => updateClass(index, 'level', Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))} className="w-full bg-gray-900 border border-fuchsia-500/30 text-fuchsia-300 px-2 py-1 font-mono text-sm text-center" min={1} max={20} />
+                  </div>
+                  {cls.level >= 3 && SUBCLASSES[cls.name] && (
+                    <div className="flex-1">
+                      <div className="text-gray-500 font-mono text-xs mb-1">SUBCLASS</div>
+                      <select value={cls.subclass || ''} onChange={(e) => updateClass(index, 'subclass', e.target.value || null)} className="w-full bg-gray-900 border border-fuchsia-500/30 text-fuchsia-300 px-2 py-1 font-mono text-sm">
+                        <option value="">None</option>
+                        {SUBCLASSES[cls.name].map(sc => <option key={sc} value={sc}>{sc}</option>)}
+                      </select>
+                    </div>
+                  )}
+                  {playerCharacter.classes.length > 1 && (
+                    <button onClick={() => removeClass(index)} className="px-2 py-1 bg-red-900/30 border border-red-500/50 text-red-300 font-mono text-xs hover:bg-red-500/20 self-end">×</button>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
 
