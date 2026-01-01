@@ -1403,7 +1403,7 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
                     }`}
                     title={`${skill.name} (${skill.ability})${isExpertise ? ' - Expertise' : isProficient ? ' - Proficient' : ''}`}
                   >
-                    <span className="truncate">{skill.name.length > 10 ? skill.name.slice(0, 8) + '.' : skill.name}</span>
+                    <span>{skill.name}</span>
                     <span className="font-bold ml-1">{formatMod(bonus)}</span>
                   </div>
                 );
