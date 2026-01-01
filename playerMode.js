@@ -17,6 +17,8 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
   const [openSkillIndex, setOpenSkillIndex] = useState(null);
   const [addingInventoryItem, setAddingInventoryItem] = useState(false);
   const [newInventoryItem, setNewInventoryItem] = useState({ name: '', quantity: 1, weight: 0, notes: '' });
+  const [addingAttack, setAddingAttack] = useState(false);
+  const [newAttack, setNewAttack] = useState({ name: '', hitMod: 0, damage: '', actionType: 'Action' });
   const [actionEconomy, setActionEconomy] = useState({ Action: true, Bonus: true, Reaction: true, Movement: true, Object: true });
   const [playerConcentration, setPlayerConcentration] = useState(null);
   const [damageInput, setDamageInput] = useState('');
@@ -137,7 +139,8 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
     deathSaves: { successes: 0, failures: 0 },
     skillProficiencies: {}, // { 'Acrobatics': 'none' | 'proficient' | 'expertise' }
     inventory: [], // { id, name, quantity, weight, notes, equipped }
-    currency: { credits: 0 }
+    currency: { credits: 0 },
+    attacks: [] // { id, name, hitMod, damage, actionType }
   });
 
   const initializeCharacterResources = (character) => {
@@ -680,6 +683,32 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
     return (playerCharacter.inventory || []).reduce((sum, i) => sum + (i.weight * i.quantity), 0);
   };
 
+  // ==================== ATTACKS ====================
+  const addAttack = () => {
+    if (!newAttack.name.trim()) return;
+    const attack = {
+      id: Date.now(),
+      name: newAttack.name.trim(),
+      hitMod: parseInt(newAttack.hitMod) || 0,
+      damage: newAttack.damage.trim(),
+      actionType: newAttack.actionType
+    };
+    setPlayerCharacter(p => ({ ...p, attacks: [...(p.attacks || []), attack] }));
+    setNewAttack({ name: '', hitMod: 0, damage: '', actionType: 'Action' });
+    setAddingAttack(false);
+  };
+
+  const removeAttack = (id) => {
+    setPlayerCharacter(p => ({ ...p, attacks: (p.attacks || []).filter(a => a.id !== id) }));
+  };
+
+  const updateAttack = (id, field, value) => {
+    setPlayerCharacter(p => ({
+      ...p,
+      attacks: (p.attacks || []).map(a => a.id === id ? { ...a, [field]: value } : a)
+    }));
+  };
+
   // ==================== EXIT ====================
   const exitPlayerMode = () => {
     setCurrentView('main');
@@ -918,6 +947,47 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
             </div>
           )}
 
+          {/* Attacks */}
+          {(playerCharacter.attacks || []).length > 0 && (
+            <div className="bg-gray-900/50 border border-gray-500/30 p-2 rounded">
+              <span className="text-gray-400 font-mono text-sm block mb-2">ATTACKS</span>
+              <div className="flex flex-col gap-2">
+                {/* Action Attacks */}
+                {(playerCharacter.attacks || []).filter(a => a.actionType === 'Action').length > 0 && (
+                  <div>
+                    <div className="text-red-400/70 font-mono text-xs mb-1">ACTION</div>
+                    <div className="flex flex-wrap gap-1">
+                      {(playerCharacter.attacks || []).filter(a => a.actionType === 'Action').map(attack => (
+                        <div key={attack.id} className="flex items-center gap-2 bg-gray-800/50 border border-gray-600 px-3 py-1.5 rounded hover:border-gray-500 transition-all">
+                          <span className="text-gray-300 font-mono text-sm font-bold">{attack.name}</span>
+                          <span className="text-cyan-400 font-mono text-xs">+{attack.hitMod}</span>
+                          <span className="text-gray-600">|</span>
+                          <span className="text-orange-400 font-mono text-xs">{attack.damage || '—'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {/* Bonus Action Attacks */}
+                {(playerCharacter.attacks || []).filter(a => a.actionType === 'Bonus').length > 0 && (
+                  <div>
+                    <div className="text-orange-400/70 font-mono text-xs mb-1">BONUS ACTION</div>
+                    <div className="flex flex-wrap gap-1">
+                      {(playerCharacter.attacks || []).filter(a => a.actionType === 'Bonus').map(attack => (
+                        <div key={attack.id} className="flex items-center gap-2 bg-gray-800/50 border border-gray-600 px-3 py-1.5 rounded hover:border-gray-500 transition-all">
+                          <span className="text-gray-300 font-mono text-sm font-bold">{attack.name}</span>
+                          <span className="text-cyan-400 font-mono text-xs">+{attack.hitMod}</span>
+                          <span className="text-gray-600">|</span>
+                          <span className="text-orange-400 font-mono text-xs">{attack.damage || '—'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Skills */}
           {(playerCharacter.skills || []).length > 0 && (
             <div className="bg-gray-900/50 border border-gray-600 p-2 rounded">
@@ -1104,6 +1174,92 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
                 <input type="number" value={playerCharacter.speed} onChange={(e) => setPlayerCharacter(p => ({ ...p, speed: parseInt(e.target.value) || 30 }))} className="w-full bg-gray-800 border border-red-500/30 text-red-300 px-2 py-1 font-mono text-sm" />
               </div>
             </div>
+          </div>
+
+          {/* Attacks Section */}
+          <div className="bg-gray-900/50 border border-gray-500/30 p-3 rounded">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-gray-300 font-mono text-sm">ATTACKS</span>
+              <button onClick={() => setAddingAttack(true)} className="px-2 py-0.5 bg-gray-800/50 border border-gray-500/30 text-gray-300 font-mono text-xs hover:border-gray-400">+ ADD</button>
+            </div>
+            {addingAttack && (
+              <div className="bg-gray-800/50 p-2 rounded mb-2 border border-gray-500/50">
+                <div className="grid grid-cols-6 gap-2 mb-2">
+                  <input
+                    type="text"
+                    placeholder="Attack name..."
+                    value={newAttack.name}
+                    onChange={(e) => setNewAttack(a => ({ ...a, name: e.target.value }))}
+                    className="col-span-2 bg-gray-900 border border-gray-500/30 text-gray-300 px-2 py-1 font-mono text-sm"
+                    autoFocus
+                    onKeyDown={(e) => e.key === 'Enter' && addAttack()}
+                  />
+                  <div className="flex items-center gap-1">
+                    <span className="text-gray-500 font-mono text-sm">+</span>
+                    <input
+                      type="number"
+                      placeholder="Hit"
+                      value={newAttack.hitMod}
+                      onChange={(e) => setNewAttack(a => ({ ...a, hitMod: e.target.value }))}
+                      className="w-full bg-gray-900 border border-gray-500/30 text-gray-300 px-2 py-1 font-mono text-sm text-center"
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Damage (e.g. 1d8+3)"
+                    value={newAttack.damage}
+                    onChange={(e) => setNewAttack(a => ({ ...a, damage: e.target.value }))}
+                    className="col-span-1 bg-gray-900 border border-gray-500/30 text-gray-300 px-2 py-1 font-mono text-sm"
+                  />
+                  <select
+                    value={newAttack.actionType}
+                    onChange={(e) => setNewAttack(a => ({ ...a, actionType: e.target.value }))}
+                    className="bg-gray-900 border border-gray-500/30 text-gray-300 px-2 py-1 font-mono text-sm"
+                  >
+                    <option value="Action">Action</option>
+                    <option value="Bonus">Bonus</option>
+                  </select>
+                  <div className="flex gap-1">
+                    <button onClick={addAttack} className="flex-1 bg-gray-500/20 border border-gray-400 text-gray-300 font-mono text-xs">ADD</button>
+                    <button onClick={() => { setAddingAttack(false); setNewAttack({ name: '', hitMod: 0, damage: '', actionType: 'Action' }); }} className="px-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-xs">×</button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {(playerCharacter.attacks || []).length > 0 ? (
+              <div className="flex flex-col gap-1">
+                {(playerCharacter.attacks || []).filter(a => a.actionType === 'Action').length > 0 && (
+                  <div className="mb-1">
+                    <div className="text-red-400/70 font-mono text-xs mb-1">ACTION</div>
+                    {(playerCharacter.attacks || []).filter(a => a.actionType === 'Action').map(attack => (
+                      <div key={attack.id} className="flex items-center gap-2 bg-gray-800/50 border border-gray-600 px-2 py-1 rounded mb-1">
+                        <span className="text-gray-300 font-mono text-sm flex-1">{attack.name}</span>
+                        <span className="text-cyan-400 font-mono text-xs">+{attack.hitMod}</span>
+                        <span className="text-gray-500 font-mono text-xs">|</span>
+                        <span className="text-orange-400 font-mono text-xs">{attack.damage || '—'}</span>
+                        <button onClick={() => removeAttack(attack.id)} className="text-gray-500 hover:text-red-400 font-mono text-xs px-1">×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {(playerCharacter.attacks || []).filter(a => a.actionType === 'Bonus').length > 0 && (
+                  <div>
+                    <div className="text-orange-400/70 font-mono text-xs mb-1">BONUS ACTION</div>
+                    {(playerCharacter.attacks || []).filter(a => a.actionType === 'Bonus').map(attack => (
+                      <div key={attack.id} className="flex items-center gap-2 bg-gray-800/50 border border-gray-600 px-2 py-1 rounded mb-1">
+                        <span className="text-gray-300 font-mono text-sm flex-1">{attack.name}</span>
+                        <span className="text-cyan-400 font-mono text-xs">+{attack.hitMod}</span>
+                        <span className="text-gray-500 font-mono text-xs">|</span>
+                        <span className="text-orange-400 font-mono text-xs">{attack.damage || '—'}</span>
+                        <button onClick={() => removeAttack(attack.id)} className="text-gray-500 hover:text-red-400 font-mono text-xs px-1">×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-gray-500 font-mono text-sm">No attacks configured</div>
+            )}
           </div>
 
           {/* Ability Scores & Saving Throws Section */}
@@ -1510,7 +1666,7 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
 
           {/* Bottom Actions */}
           <div className="flex gap-2 mt-auto">
-            <button onClick={() => setCurrentView('combat')} className="flex-1 py-2 bg-red-900/30 border border-red-500/50 text-red-300 font-mono text-sm hover:bg-red-500/20">⚔ COMBAT</button>
+            <button onClick={() => setCurrentView('combat')} className="flex-1 py-2 bg-red-900/30 border border-red-500/50 text-red-300 font-mono text-sm hover:bg-red-500/20">COMBAT</button>
             <button onClick={() => setCurrentView('main')} className="flex-1 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm hover:border-cyan-500/50">◀ MAIN</button>
           </div>
         </div>
