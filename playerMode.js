@@ -12,6 +12,8 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
   const [addingFeature, setAddingFeature] = useState(false);
   const [addingResource, setAddingResource] = useState(false);
   const [newResource, setNewResource] = useState({ name: '', max: 1, color: 'cyan', shortRest: false, isPool: false });
+  const [addingSkill, setAddingSkill] = useState(false);
+  const [newSkill, setNewSkill] = useState({ name: '', linkedResource: '', cost: 1 });
   const [actionEconomy, setActionEconomy] = useState({ Action: true, Bonus: true, Reaction: true, Movement: true, Object: true });
   const [playerConcentration, setPlayerConcentration] = useState(null);
   const [damageInput, setDamageInput] = useState('');
@@ -132,6 +134,7 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
     customResources: [],
     classResources: [],
     features: [],
+    skills: [],
     proficiencies: '',
     languages: 'Common',
     notes: '',
@@ -417,6 +420,118 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
     });
   };
 
+  // ==================== SKILLS ====================
+  const getAvailableResources = () => {
+    const resources = [];
+    
+    // Add spell slots that have max > 0
+    Object.entries(playerCharacter.spellSlots || {}).forEach(([key, slot]) => {
+      if (slot.max > 0) {
+        if (slot.isPact) {
+          resources.push({ key: `pact-${slot.level}`, label: `Pact Slot (Lvl ${slot.level})`, type: 'pact' });
+        } else {
+          resources.push({ key: `spell-${key}`, label: `Spell Slot (Lvl ${key})`, type: 'spell' });
+        }
+      }
+    });
+    
+    // Add custom resources
+    (playerCharacter.customResources || []).forEach((res, i) => {
+      resources.push({ key: `custom-${i}`, label: res.name, type: 'custom', color: res.color });
+    });
+    
+    // Add class resources
+    (playerCharacter.classResources || []).forEach((res, i) => {
+      resources.push({ key: `class-${i}`, label: res.name, type: 'class' });
+    });
+    
+    return resources;
+  };
+
+  const addSkill = () => {
+    if (!newSkill.name.trim() || !newSkill.linkedResource) return;
+    setPlayerCharacter(p => ({
+      ...p,
+      skills: [...(p.skills || []), { ...newSkill, cost: parseInt(newSkill.cost) || 1 }]
+    }));
+    setNewSkill({ name: '', linkedResource: '', cost: 1 });
+    setAddingSkill(false);
+  };
+
+  const removeSkill = (index) => {
+    setPlayerCharacter(p => ({
+      ...p,
+      skills: (p.skills || []).filter((_, i) => i !== index)
+    }));
+  };
+
+  const useSkill = (index) => {
+    const skill = playerCharacter.skills?.[index];
+    if (!skill) return;
+    
+    const [type, id] = skill.linkedResource.split('-');
+    const cost = skill.cost || 1;
+    
+    setPlayerCharacter(p => {
+      if (type === 'spell') {
+        const slot = p.spellSlots?.[id];
+        if (!slot || slot.used + cost > slot.max) return p;
+        return { ...p, spellSlots: { ...p.spellSlots, [id]: { ...slot, used: slot.used + cost } } };
+      } else if (type === 'pact') {
+        // Find the pact slot key
+        const pactKey = Object.keys(p.spellSlots || {}).find(k => k.startsWith('pact'));
+        if (!pactKey) return p;
+        const slot = p.spellSlots[pactKey];
+        if (!slot || slot.used + cost > slot.max) return p;
+        return { ...p, spellSlots: { ...p.spellSlots, [pactKey]: { ...slot, used: slot.used + cost } } };
+      } else if (type === 'custom') {
+        const idx = parseInt(id);
+        const res = p.customResources?.[idx];
+        if (!res || res.used + cost > res.max) return p;
+        const newResources = [...p.customResources];
+        newResources[idx] = { ...res, used: res.used + cost };
+        return { ...p, customResources: newResources };
+      } else if (type === 'class') {
+        const idx = parseInt(id);
+        const res = p.classResources?.[idx];
+        if (!res || res.used + cost > res.max) return p;
+        const newResources = [...p.classResources];
+        newResources[idx] = { ...res, used: res.used + cost };
+        return { ...p, classResources: newResources };
+      }
+      return p;
+    });
+  };
+
+  const getSkillAvailable = (skill) => {
+    if (!skill?.linkedResource) return false;
+    const [type, id] = skill.linkedResource.split('-');
+    const cost = skill.cost || 1;
+    
+    if (type === 'spell') {
+      const slot = playerCharacter.spellSlots?.[id];
+      return slot && (slot.max - slot.used) >= cost;
+    } else if (type === 'pact') {
+      const pactKey = Object.keys(playerCharacter.spellSlots || {}).find(k => k.startsWith('pact'));
+      const slot = playerCharacter.spellSlots?.[pactKey];
+      return slot && (slot.max - slot.used) >= cost;
+    } else if (type === 'custom') {
+      const res = playerCharacter.customResources?.[parseInt(id)];
+      return res && (res.max - res.used) >= cost;
+    } else if (type === 'class') {
+      const res = playerCharacter.classResources?.[parseInt(id)];
+      return res && (res.max - res.used) >= cost;
+    }
+    return false;
+  };
+
+  const getSkillResourceLabel = (linkedResource) => {
+    if (!linkedResource) return '';
+    const resources = getAvailableResources();
+    const found = resources.find(r => r.key === linkedResource);
+    return found?.label || linkedResource;
+  };
+
   // ==================== RESTING ====================
   const shortRest = () => {
     setPlayerCharacter(p => {
@@ -692,6 +807,29 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
             </div>
           )}
 
+          {/* Skills */}
+          {(playerCharacter.skills || []).length > 0 && (
+            <div className="bg-gray-900/50 border border-green-500/30 p-2 rounded">
+              <span className="text-green-400 font-mono text-sm block mb-2">SKILLS</span>
+              <div className="flex flex-wrap gap-2">
+                {(playerCharacter.skills || []).map((skill, i) => {
+                  const available = getSkillAvailable(skill);
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => available && useSkill(i)}
+                      disabled={!available}
+                      className={`px-3 py-2 border font-mono text-sm transition-all ${available ? 'bg-green-900/30 border-green-500/50 text-green-300 hover:bg-green-500/30 hover:border-green-400' : 'bg-gray-900/50 border-gray-700 text-gray-600 cursor-not-allowed'}`}
+                      title={`${skill.name} - Uses ${getSkillResourceLabel(skill.linkedResource)}${skill.cost > 1 ? ` ×${skill.cost}` : ''}`}
+                    >
+                      {skill.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Quick Stats */}
           <div className="flex gap-2 mt-auto">
             <div className="flex-1 bg-gray-900/50 border border-cyan-500/30 p-2 rounded text-center">
@@ -917,6 +1055,51 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
             )}
           </div>
 
+          {/* Skills Section */}
+          <div className="bg-gray-900/50 border border-green-500/30 p-3 rounded">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-green-400 font-mono text-sm">SKILLS & ABILITIES</span>
+              <button onClick={() => setAddingSkill(true)} className="px-2 py-0.5 bg-gray-800/50 border border-green-500/30 text-green-300 font-mono text-xs hover:border-green-400">+ ADD</button>
+            </div>
+            {addingSkill && (
+              <div className="bg-gray-800/50 p-2 rounded mb-2 border border-green-500/50">
+                <div className="grid grid-cols-4 gap-2 mb-2">
+                  <input type="text" placeholder="Skill Name" value={newSkill.name} onChange={(e) => setNewSkill(s => ({ ...s, name: e.target.value }))} className="col-span-2 bg-gray-900 border border-green-500/30 text-green-300 px-2 py-1 font-mono text-sm" autoFocus />
+                  <select value={newSkill.linkedResource} onChange={(e) => setNewSkill(s => ({ ...s, linkedResource: e.target.value }))} className="bg-gray-900 border border-green-500/30 text-green-300 px-2 py-1 font-mono text-sm">
+                    <option value="">Link to...</option>
+                    {getAvailableResources().map(r => (
+                      <option key={r.key} value={r.key}>{r.label}</option>
+                    ))}
+                  </select>
+                  <div className="flex gap-1">
+                    <button onClick={addSkill} className="flex-1 px-2 py-1 bg-green-500/20 border border-green-400 text-green-300 font-mono text-xs">ADD</button>
+                    <button onClick={() => { setAddingSkill(false); setNewSkill({ name: '', linkedResource: '', cost: 1 }); }} className="px-2 py-1 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-xs">×</button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 font-mono text-xs">Cost:</span>
+                  <input type="number" value={newSkill.cost} onChange={(e) => setNewSkill(s => ({ ...s, cost: parseInt(e.target.value) || 1 }))} className="w-12 bg-gray-900 border border-green-500/30 text-green-300 px-1 py-0.5 text-center font-mono text-sm" min={1} />
+                  <span className="text-gray-500 font-mono text-xs">resource(s) per use</span>
+                </div>
+              </div>
+            )}
+            {(playerCharacter.skills || []).length > 0 ? (
+              <div className="grid grid-cols-2 gap-2">
+                {(playerCharacter.skills || []).map((skill, i) => (
+                  <div key={i} className="bg-gray-800/50 border border-green-500/30 p-2 rounded flex items-center justify-between">
+                    <div>
+                      <span className="text-green-300 font-mono text-sm">{skill.name}</span>
+                      <div className="text-gray-500 font-mono text-xs">{getSkillResourceLabel(skill.linkedResource)}{skill.cost > 1 ? ` ×${skill.cost}` : ''}</div>
+                    </div>
+                    <button onClick={() => removeSkill(i)} className="text-gray-500 hover:text-red-400 font-mono text-xs px-2">×</button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-gray-500 font-mono text-sm">No skills added. Add skills that consume spell slots or resources.</div>
+            )}
+          </div>
+
           {/* Features Section */}
           <div className="bg-gray-900/50 border border-yellow-500/30 p-3 rounded">
             <div className="flex items-center justify-between mb-2">
@@ -1058,6 +1241,28 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
                       )}
                       {res.shortRest && <span className="text-gray-500 text-xs">(SR)</span>}
                     </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Skills */}
+          {(playerCharacter.skills || []).length > 0 && (
+            <div className="bg-gray-900/50 border border-green-500/30 p-2 rounded">
+              <div className="flex flex-wrap gap-2">
+                {(playerCharacter.skills || []).map((skill, i) => {
+                  const available = getSkillAvailable(skill);
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => available && useSkill(i)}
+                      disabled={!available}
+                      className={`px-3 py-1.5 border font-mono text-sm transition-all ${available ? 'bg-green-900/30 border-green-500/50 text-green-300 hover:bg-green-500/30 hover:border-green-400' : 'bg-gray-900/50 border-gray-700 text-gray-600 cursor-not-allowed'}`}
+                      title={`Uses ${getSkillResourceLabel(skill.linkedResource)}${skill.cost > 1 ? ` ×${skill.cost}` : ''}`}
+                    >
+                      {skill.name}
+                    </button>
                   );
                 })}
               </div>
