@@ -680,6 +680,7 @@
               onExit={exitPlayerMode}
               savedCharacter={playerCharacter}
               onSaveCharacter={savePlayerCharacter}
+              onAddToParty={(newMember) => setParty(p => [...p, newMember])}
             />
           ) : showShopLoot ? (
             <div className="flex-1 overflow-auto flex flex-col">

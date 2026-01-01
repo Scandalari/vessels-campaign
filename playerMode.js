@@ -1,7 +1,7 @@
 // ==================== PLAYER MODE COMPONENT ====================
 // Extracted from main XPTracker for modularity
 
-function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter }) {
+function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter, onAddToParty }) {
   const { useState, useEffect } = React;
 
   // ==================== STATE ====================
@@ -587,6 +587,26 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
     onExit();
   };
 
+  // ==================== SAVE TO PARTY ====================
+  const saveToParty = () => {
+    if (!playerCharacter || playerCharacter.linkedToParty) return;
+    if (!onAddToParty) return;
+    
+    // Create a party-compatible version of the character
+    const partyMember = {
+      id: playerCharacter.id || Date.now(),
+      name: playerCharacter.name,
+      origin: playerCharacter.origin,
+      classes: playerCharacter.classes,
+      kia: false
+    };
+    
+    onAddToParty(partyMember);
+    
+    // Update local state to reflect linkage
+    setPlayerCharacter(p => ({ ...p, linkedToParty: true }));
+  };
+
   // ==================== RENDER ====================
   return (
     <div className="flex-1 overflow-auto flex flex-col">
@@ -854,6 +874,12 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
           <div className="flex gap-2 mb-1">
             <button onClick={() => setCurrentView('main')} className="px-3 py-1 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm hover:border-cyan-500/50">◀ BACK</button>
             <div className="flex-1" />
+            {!playerCharacter.linkedToParty && onAddToParty && (
+              <button onClick={saveToParty} className="px-3 py-1 bg-fuchsia-900/30 border border-fuchsia-500/50 text-fuchsia-300 font-mono text-sm hover:bg-fuchsia-500/20 hover:border-fuchsia-400 transition-all">💾 SAVE TO PARTY</button>
+            )}
+            {playerCharacter.linkedToParty && (
+              <span className="px-3 py-1 text-green-400/70 font-mono text-sm">✓ SYNCED</span>
+            )}
           </div>
 
           {/* Basic Info Section */}
