@@ -908,8 +908,8 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
                   );
                 })()
               ) : (
-                // Grid of skill squares
-                <div className="grid grid-cols-4 gap-2">
+                // Flexible skill buttons
+                <div className="flex flex-wrap gap-1">
                   {(playerCharacter.skills || []).map((skill, i) => {
                     const available = getSkillAvailable(skill);
                     const colors = getSkillColor(skill);
@@ -917,10 +917,10 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
                       <button
                         key={i}
                         onClick={() => setOpenSkillIndex(i)}
-                        className={`aspect-square p-2 border-2 font-mono text-sm transition-all flex flex-col items-center justify-center text-center ${available ? `${colors.bgUsed || 'bg-gray-900/30'} ${colors.border}/50 ${colors.text} hover:${colors.border} hover:${colors.bg}/20` : 'bg-gray-900/50 border-gray-700 text-gray-600'}`}
+                        className={`flex-1 min-w-[70px] px-2 py-1 border font-mono text-xs transition-all flex items-center justify-center gap-1 ${available ? `${colors.bgUsed || 'bg-gray-900/30'} ${colors.border}/50 ${colors.text} hover:${colors.border}` : 'bg-gray-900/50 border-gray-700 text-gray-600'}`}
                       >
-                        <span className="font-bold leading-tight">{skill.name}</span>
-                        {!available && <span className="text-xs opacity-60 mt-1">empty</span>}
+                        <span className="font-bold">{skill.name}</span>
+                        {!available && <span className="opacity-60">∅</span>}
                       </button>
                     );
                   })}
@@ -1508,8 +1508,8 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
                   );
                 })()
               ) : (
-                // Grid of skill squares
-                <div className="grid grid-cols-4 gap-2">
+                // Flexible skill buttons
+                <div className="flex flex-wrap gap-1">
                   {(playerCharacter.skills || []).map((skill, i) => {
                     const available = getSkillAvailable(skill);
                     const colors = getSkillColor(skill);
@@ -1517,10 +1517,10 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
                       <button
                         key={i}
                         onClick={() => setOpenSkillIndex(i)}
-                        className={`aspect-square p-2 border-2 font-mono text-sm transition-all flex flex-col items-center justify-center text-center ${available ? `${colors.bgUsed || 'bg-gray-900/30'} ${colors.border}/50 ${colors.text} hover:${colors.border} hover:${colors.bg}/20` : 'bg-gray-900/50 border-gray-700 text-gray-600'}`}
+                        className={`flex-1 min-w-[70px] px-2 py-1 border font-mono text-xs transition-all flex items-center justify-center gap-1 ${available ? `${colors.bgUsed || 'bg-gray-900/30'} ${colors.border}/50 ${colors.text} hover:${colors.border}` : 'bg-gray-900/50 border-gray-700 text-gray-600'}`}
                       >
-                        <span className="font-bold leading-tight">{skill.name}</span>
-                        {!available && <span className="text-xs opacity-60 mt-1">empty</span>}
+                        <span className="font-bold">{skill.name}</span>
+                        {!available && <span className="opacity-60">∅</span>}
                       </button>
                     );
                   })}
