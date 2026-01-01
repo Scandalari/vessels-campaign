@@ -7,10 +7,11 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
   // ==================== STATE ====================
   const [playerCharacter, setPlayerCharacter] = useState(savedCharacter);
   const [playerSetupStep, setPlayerSetupStep] = useState(savedCharacter ? null : 'select');
-  const [showPlayerSheet, setShowPlayerSheet] = useState(true);
-  const [showPlayerCombat, setShowPlayerCombat] = useState(false);
+  const [currentView, setCurrentView] = useState('main'); // 'main', 'combat', 'config'
   const [editingAbility, setEditingAbility] = useState(null);
   const [addingFeature, setAddingFeature] = useState(false);
+  const [addingResource, setAddingResource] = useState(false);
+  const [newResource, setNewResource] = useState({ name: '', max: 1, color: 'cyan', shortRest: false, isPool: false });
   const [actionEconomy, setActionEconomy] = useState({ Action: true, Bonus: true, Reaction: true, Movement: true, Object: true });
   const [playerConcentration, setPlayerConcentration] = useState(null);
   const [damageInput, setDamageInput] = useState('');
@@ -21,6 +22,22 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
       onSaveCharacter(playerCharacter);
     }
   }, [playerCharacter]);
+
+  // ==================== COLOR OPTIONS ====================
+  const RESOURCE_COLORS = [
+    { id: 'red', bg: 'bg-red-500', border: 'border-red-400', text: 'text-red-300', bgUsed: 'bg-red-900/50' },
+    { id: 'orange', bg: 'bg-orange-500', border: 'border-orange-400', text: 'text-orange-300', bgUsed: 'bg-orange-900/50' },
+    { id: 'yellow', bg: 'bg-yellow-500', border: 'border-yellow-400', text: 'text-yellow-300', bgUsed: 'bg-yellow-900/50' },
+    { id: 'green', bg: 'bg-green-500', border: 'border-green-400', text: 'text-green-300', bgUsed: 'bg-green-900/50' },
+    { id: 'cyan', bg: 'bg-cyan-500', border: 'border-cyan-400', text: 'text-cyan-300', bgUsed: 'bg-cyan-900/50' },
+    { id: 'blue', bg: 'bg-blue-500', border: 'border-blue-400', text: 'text-blue-300', bgUsed: 'bg-blue-900/50' },
+    { id: 'purple', bg: 'bg-purple-500', border: 'border-purple-400', text: 'text-purple-300', bgUsed: 'bg-purple-900/50' },
+    { id: 'fuchsia', bg: 'bg-fuchsia-500', border: 'border-fuchsia-400', text: 'text-fuchsia-300', bgUsed: 'bg-fuchsia-900/50' },
+    { id: 'pink', bg: 'bg-pink-500', border: 'border-pink-400', text: 'text-pink-300', bgUsed: 'bg-pink-900/50' },
+    { id: 'gray', bg: 'bg-gray-400', border: 'border-gray-300', text: 'text-gray-300', bgUsed: 'bg-gray-700/50' },
+  ];
+
+  const getColorById = (colorId) => RESOURCE_COLORS.find(c => c.id === colorId) || RESOURCE_COLORS[4];
 
   // ==================== HELPERS ====================
   const getAbilityMod = (score) => Math.floor((score - 10) / 2);
@@ -101,14 +118,19 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
     name: partyMember?.name || 'New Operative',
     origin: partyMember?.origin || 'Lifer',
     classes: partyMember?.classes || [{ name: 'Fighter', level: 1, subclass: null }],
+    level: partyMember?.classes?.reduce((sum, c) => sum + c.level, 0) || 1,
     abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 },
+    savingThrows: { STR: false, DEX: false, CON: false, INT: false, WIS: false, CHA: false },
     hp: { current: 10, max: 10, temp: 0 },
     ac: 10,
     initiative: 0,
     speed: 30,
     proficiencyBonus: 2,
+    // Manual spell slots: { 1: { max: 4, used: 0 }, 2: { max: 3, used: 0 }, pact: { max: 2, used: 0, level: 5 } }
     spellSlots: {},
-    resources: [],
+    // Custom resources: { name, max, used, color, shortRest, isPool }
+    customResources: [],
+    classResources: [],
     features: [],
     proficiencies: '',
     languages: 'Common',
@@ -247,19 +269,77 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
     }));
   };
 
+  // ==================== CONFIG: SAVING THROWS ====================
+  const toggleSavingThrow = (ability) => {
+    setPlayerCharacter(p => ({
+      ...p,
+      savingThrows: { ...p.savingThrows, [ability]: !p.savingThrows?.[ability] }
+    }));
+  };
+
+  // ==================== CONFIG: SPELL SLOTS ====================
+  const setSpellSlotMax = (level, max) => {
+    setPlayerCharacter(p => {
+      const newSlots = { ...p.spellSlots };
+      if (max <= 0) {
+        delete newSlots[level];
+      } else {
+        newSlots[level] = { ...newSlots[level], max: parseInt(max) || 0, used: newSlots[level]?.used || 0 };
+        if (level === 'pact') newSlots[level].level = newSlots[level].level || 1;
+      }
+      return { ...p, spellSlots: newSlots };
+    });
+  };
+
+  const setPactSlotLevel = (level) => {
+    setPlayerCharacter(p => ({
+      ...p,
+      spellSlots: {
+        ...p.spellSlots,
+        pact: { ...p.spellSlots.pact, level: parseInt(level) || 1 }
+      }
+    }));
+  };
+
+  // ==================== CONFIG: CUSTOM RESOURCES ====================
+  const addCustomResource = () => {
+    if (!newResource.name.trim()) return;
+    setPlayerCharacter(p => ({
+      ...p,
+      customResources: [...(p.customResources || []), { ...newResource, used: 0 }]
+    }));
+    setNewResource({ name: '', max: 1, color: 'cyan', shortRest: false, isPool: false });
+    setAddingResource(false);
+  };
+
+  const removeCustomResource = (index) => {
+    setPlayerCharacter(p => ({
+      ...p,
+      customResources: p.customResources.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateCustomResource = (index, field, value) => {
+    setPlayerCharacter(p => {
+      const newResources = [...(p.customResources || [])];
+      newResources[index] = { ...newResources[index], [field]: value };
+      return { ...p, customResources: newResources };
+    });
+  };
+
   // ==================== RESTING ====================
   const shortRest = () => {
     setPlayerCharacter(p => {
       const restoredSlots = { ...p.spellSlots };
-      Object.keys(restoredSlots).forEach(key => {
-        if (restoredSlots[key].isPact) {
-          restoredSlots[key] = { ...restoredSlots[key], used: 0 };
-        }
-      });
+      // Restore pact slots on short rest
+      if (restoredSlots.pact) {
+        restoredSlots.pact = { ...restoredSlots.pact, used: 0 };
+      }
       return {
         ...p,
         spellSlots: restoredSlots,
-        classResources: (p.classResources || []).map(r => r.shortRest ? { ...r, used: 0 } : r)
+        classResources: (p.classResources || []).map(r => r.shortRest ? { ...r, used: 0 } : r),
+        customResources: (p.customResources || []).map(r => r.shortRest ? { ...r, used: 0 } : r)
       };
     });
     resetActionEconomy();
@@ -276,6 +356,7 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
         hp: { ...p.hp, current: p.hp.max, temp: 0 },
         spellSlots: restoredSlots,
         classResources: (p.classResources || []).map(r => ({ ...r, used: 0 })),
+        customResources: (p.customResources || []).map(r => ({ ...r, used: 0 })),
         deathSaves: { successes: 0, failures: 0 }
       };
     });
@@ -307,8 +388,7 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
 
   // ==================== EXIT ====================
   const exitPlayerMode = () => {
-    setShowPlayerSheet(true);
-    setShowPlayerCombat(false);
+    setCurrentView('main');
     onExit();
   };
 
@@ -321,11 +401,13 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
         <div className="text-center">
           {playerSetupStep ? (
             <span className="text-xl font-bold tracking-widest" style={{textShadow: '0 0 20px rgba(255,0,255,0.5)', color: '#ff00ff'}}>SETUP</span>
-          ) : showPlayerCombat ? (
+          ) : currentView === 'combat' ? (
             <span className="text-xl font-bold tracking-widest" style={{textShadow: '0 0 20px rgba(255,0,255,0.5)', color: '#ff00ff'}}>COMBAT OPS</span>
+          ) : currentView === 'config' ? (
+            <span className="text-xl font-bold tracking-widest" style={{textShadow: '0 0 20px rgba(0,255,255,0.5)', color: '#00ffff'}}>CONFIG</span>
           ) : playerCharacter ? (
             <div>
-              <span className="text-gray-400 font-mono text-sm">Lvl {getPlayerLevel()} {playerCharacter.origin} </span>
+              <span className="text-gray-400 font-mono text-sm">Lvl {playerCharacter.level || getPlayerLevel()} {playerCharacter.origin} </span>
               <span className="text-xl font-bold" style={{textShadow: '0 0 20px rgba(255,0,255,0.5)', color: '#ff00ff'}}>{playerCharacter.name}</span>
               <span className="text-gray-400 font-mono text-sm"> {playerCharacter.classes.map(c => `${c.name} ${c.level}${c.subclass ? ` (${c.subclass})` : ''}`).join(' / ')}</span>
             </div>
@@ -335,7 +417,7 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
         </div>
         <div className="flex gap-1">
           {!playerSetupStep && <button onClick={() => setPlayerSetupStep('select')} className="px-2 py-1 text-xs font-mono border transition-all bg-gray-800/50 border-gray-600 text-gray-400 hover:border-cyan-500/50" title="Switch Character">↔</button>}
-          {!playerSetupStep && <button onClick={() => { setShowPlayerSheet(true); setShowPlayerCombat(false); }} className={`px-2 py-1 text-xs font-mono border transition-all ${!showPlayerCombat ? 'bg-fuchsia-500/20 border-fuchsia-400 text-fuchsia-300' : 'bg-gray-800/50 border-gray-600 text-gray-400 hover:border-fuchsia-500/50'}`}>SHEET</button>}
+          {!playerSetupStep && currentView === 'main' && <button onClick={() => setCurrentView('config')} className="px-2 py-1 text-xs font-mono border transition-all bg-gray-800/50 border-gray-600 text-gray-400 hover:border-cyan-500/50">SHEET</button>}
         </div>
       </div>
 
@@ -382,12 +464,12 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
             </>
           )}
         </div>
-      ) : showPlayerCombat ? (
+      ) : currentView === 'combat' ? (
         /* ==================== COMBAT VIEW ==================== */
         <div className="flex-1 flex flex-col gap-2">
           {/* Combat Header */}
           <div className="flex gap-2 mb-1">
-            <button onClick={() => { setShowPlayerCombat(false); setShowPlayerSheet(true); }} className="px-3 py-1 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm hover:border-fuchsia-500/50">◀ SHEET</button>
+            <button onClick={() => setCurrentView('main')} className="px-3 py-1 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm hover:border-fuchsia-500/50">◀ BACK</button>
             <div className="flex-1" />
             <button onClick={resetActionEconomy} className="px-3 py-1 bg-gray-800/50 border border-orange-500/30 text-orange-300 font-mono text-sm hover:border-orange-400">NEW ROUND</button>
           </div>
@@ -546,67 +628,234 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
             <button onClick={longRest} className="flex-1 py-2 bg-fuchsia-900/30 border border-fuchsia-500/50 text-fuchsia-300 font-mono text-sm hover:bg-fuchsia-500/20">LONG REST</button>
           </div>
         </div>
+      ) : currentView === 'config' ? (
+        /* ==================== CONFIG VIEW (BACK END) ==================== */
+        <div className="flex-1 flex flex-col gap-3 overflow-auto hide-scrollbar">
+          {/* Config Header */}
+          <div className="flex gap-2 mb-1">
+            <button onClick={() => setCurrentView('main')} className="px-3 py-1 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm hover:border-cyan-500/50">◀ BACK</button>
+            <div className="flex-1" />
+          </div>
+
+          {/* Basic Info Section */}
+          <div className="bg-gray-900/50 border border-cyan-500/30 p-3 rounded">
+            <div className="text-cyan-400 font-mono text-sm mb-2">BASIC INFO</div>
+            <div className="grid grid-cols-4 gap-3">
+              <div>
+                <div className="text-gray-500 font-mono text-xs mb-1">NAME</div>
+                <input type="text" value={playerCharacter.name} onChange={(e) => setPlayerCharacter(p => ({ ...p, name: e.target.value }))} className="w-full bg-gray-800 border border-cyan-500/30 text-cyan-300 px-2 py-1 font-mono text-sm" />
+              </div>
+              <div>
+                <div className="text-gray-500 font-mono text-xs mb-1">ORIGIN</div>
+                <select value={playerCharacter.origin} onChange={(e) => setPlayerCharacter(p => ({ ...p, origin: e.target.value }))} className="w-full bg-gray-800 border border-cyan-500/30 text-cyan-300 px-2 py-1 font-mono text-sm">
+                  {ORIGINS.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+              <div>
+                <div className="text-gray-500 font-mono text-xs mb-1">LEVEL</div>
+                <input type="number" value={playerCharacter.level || 1} onChange={(e) => setPlayerCharacter(p => ({ ...p, level: parseInt(e.target.value) || 1 }))} className="w-full bg-gray-800 border border-cyan-500/30 text-cyan-300 px-2 py-1 font-mono text-sm" min={1} max={20} />
+              </div>
+              <div>
+                <div className="text-gray-500 font-mono text-xs mb-1">PROFICIENCY</div>
+                <input type="number" value={playerCharacter.proficiencyBonus} onChange={(e) => setPlayerCharacter(p => ({ ...p, proficiencyBonus: parseInt(e.target.value) || 2 }))} className="w-full bg-gray-800 border border-cyan-500/30 text-cyan-300 px-2 py-1 font-mono text-sm" min={2} max={6} />
+              </div>
+            </div>
+          </div>
+
+          {/* Combat Stats Section */}
+          <div className="bg-gray-900/50 border border-red-500/30 p-3 rounded">
+            <div className="text-red-400 font-mono text-sm mb-2">COMBAT STATS</div>
+            <div className="grid grid-cols-5 gap-3">
+              <div>
+                <div className="text-gray-500 font-mono text-xs mb-1">MAX HP</div>
+                <input type="number" value={playerCharacter.hp.max} onChange={(e) => updatePlayerHP('max', e.target.value)} className="w-full bg-gray-800 border border-red-500/30 text-red-300 px-2 py-1 font-mono text-sm" />
+              </div>
+              <div>
+                <div className="text-gray-500 font-mono text-xs mb-1">ARMOR CLASS</div>
+                <input type="number" value={playerCharacter.ac} onChange={(e) => setPlayerCharacter(p => ({ ...p, ac: parseInt(e.target.value) || 10 }))} className="w-full bg-gray-800 border border-red-500/30 text-red-300 px-2 py-1 font-mono text-sm" />
+              </div>
+              <div>
+                <div className="text-gray-500 font-mono text-xs mb-1">INITIATIVE</div>
+                <input type="number" value={playerCharacter.initiative} onChange={(e) => setPlayerCharacter(p => ({ ...p, initiative: parseInt(e.target.value) || 0 }))} className="w-full bg-gray-800 border border-red-500/30 text-red-300 px-2 py-1 font-mono text-sm" />
+              </div>
+              <div>
+                <div className="text-gray-500 font-mono text-xs mb-1">SPEED</div>
+                <input type="number" value={playerCharacter.speed} onChange={(e) => setPlayerCharacter(p => ({ ...p, speed: parseInt(e.target.value) || 30 }))} className="w-full bg-gray-800 border border-red-500/30 text-red-300 px-2 py-1 font-mono text-sm" />
+              </div>
+            </div>
+          </div>
+
+          {/* Ability Scores & Saving Throws Section */}
+          <div className="bg-gray-900/50 border border-fuchsia-500/30 p-3 rounded">
+            <div className="text-fuchsia-400 font-mono text-sm mb-2">ABILITY SCORES & SAVING THROWS</div>
+            <div className="grid grid-cols-6 gap-2">
+              {ABILITIES.map(ability => {
+                const score = playerCharacter.abilities[ability];
+                const mod = getAbilityMod(score);
+                const proficient = playerCharacter.savingThrows?.[ability];
+                const saveBonus = mod + (proficient ? playerCharacter.proficiencyBonus : 0);
+                return (
+                  <div key={ability} className="bg-gray-800/50 border border-fuchsia-500/20 p-2 rounded">
+                    <div className="text-fuchsia-400 font-mono text-xs text-center mb-1">{ability}</div>
+                    <input type="number" value={score} onChange={(e) => updatePlayerAbility(ability, e.target.value)} className="w-full bg-gray-900 border border-fuchsia-500/30 text-fuchsia-300 px-1 py-0.5 text-center font-mono text-lg mb-1" />
+                    <div className="text-gray-400 font-mono text-xs text-center">MOD: {formatMod(mod)}</div>
+                    <button onClick={() => toggleSavingThrow(ability)} className={`w-full mt-1 px-1 py-0.5 border font-mono text-xs transition-all ${proficient ? 'bg-fuchsia-500/30 border-fuchsia-400 text-fuchsia-300' : 'bg-gray-800 border-gray-600 text-gray-500'}`}>
+                      SAVE {formatMod(saveBonus)}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Spell Slots Section */}
+          <div className="bg-gray-900/50 border border-purple-500/30 p-3 rounded">
+            <div className="text-purple-400 font-mono text-sm mb-2">SPELL SLOTS</div>
+            <div className="grid grid-cols-5 gap-2">
+              {[1,2,3,4,5,6,7,8,9].map(level => (
+                <div key={level} className="bg-gray-800/50 p-2 rounded">
+                  <div className="text-purple-300 font-mono text-xs text-center mb-1">LVL {level}</div>
+                  <input type="number" value={playerCharacter.spellSlots?.[level]?.max || 0} onChange={(e) => setSpellSlotMax(level, e.target.value)} className="w-full bg-gray-900 border border-purple-500/30 text-purple-300 px-1 py-0.5 text-center font-mono text-sm" min={0} max={4} />
+                </div>
+              ))}
+              <div className="bg-gray-800/50 p-2 rounded border border-fuchsia-500/30">
+                <div className="text-fuchsia-300 font-mono text-xs text-center mb-1">PACT</div>
+                <div className="flex gap-1">
+                  <input type="number" value={playerCharacter.spellSlots?.pact?.max || 0} onChange={(e) => setSpellSlotMax('pact', e.target.value)} className="w-1/2 bg-gray-900 border border-fuchsia-500/30 text-fuchsia-300 px-1 py-0.5 text-center font-mono text-xs" min={0} max={4} placeholder="#" />
+                  <input type="number" value={playerCharacter.spellSlots?.pact?.level || 1} onChange={(e) => setPactSlotLevel(e.target.value)} className="w-1/2 bg-gray-900 border border-fuchsia-500/30 text-fuchsia-300 px-1 py-0.5 text-center font-mono text-xs" min={1} max={5} placeholder="Lvl" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Custom Resources Section */}
+          <div className="bg-gray-900/50 border border-orange-500/30 p-3 rounded">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-orange-400 font-mono text-sm">CUSTOM RESOURCES</span>
+              <button onClick={() => setAddingResource(true)} className="px-2 py-0.5 bg-gray-800/50 border border-orange-500/30 text-orange-300 font-mono text-xs hover:border-orange-400">+ ADD</button>
+            </div>
+            {addingResource && (
+              <div className="bg-gray-800/50 p-2 rounded mb-2 border border-orange-500/50">
+                <div className="grid grid-cols-4 gap-2 mb-2">
+                  <input type="text" placeholder="Name" value={newResource.name} onChange={(e) => setNewResource(r => ({ ...r, name: e.target.value }))} className="col-span-2 bg-gray-900 border border-orange-500/30 text-orange-300 px-2 py-1 font-mono text-sm" autoFocus />
+                  <input type="number" placeholder="Max" value={newResource.max} onChange={(e) => setNewResource(r => ({ ...r, max: parseInt(e.target.value) || 1 }))} className="bg-gray-900 border border-orange-500/30 text-orange-300 px-2 py-1 font-mono text-sm" min={1} />
+                  <div className="flex gap-1">
+                    <button onClick={addCustomResource} className="flex-1 px-2 py-1 bg-orange-500/20 border border-orange-400 text-orange-300 font-mono text-xs">ADD</button>
+                    <button onClick={() => { setAddingResource(false); setNewResource({ name: '', max: 1, color: 'cyan', shortRest: false, isPool: false }); }} className="px-2 py-1 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-xs">×</button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex gap-1">
+                    {RESOURCE_COLORS.map(c => (
+                      <button key={c.id} onClick={() => setNewResource(r => ({ ...r, color: c.id }))} className={`w-5 h-5 rounded-full border-2 transition-all ${c.bg} ${newResource.color === c.id ? 'ring-2 ring-white ring-offset-1 ring-offset-gray-900' : 'border-transparent opacity-60 hover:opacity-100'}`} />
+                    ))}
+                  </div>
+                  <label className="flex items-center gap-1 text-gray-400 font-mono text-xs">
+                    <input type="checkbox" checked={newResource.shortRest} onChange={(e) => setNewResource(r => ({ ...r, shortRest: e.target.checked }))} className="accent-orange-500" />
+                    Short Rest
+                  </label>
+                  <label className="flex items-center gap-1 text-gray-400 font-mono text-xs">
+                    <input type="checkbox" checked={newResource.isPool} onChange={(e) => setNewResource(r => ({ ...r, isPool: e.target.checked }))} className="accent-orange-500" />
+                    Pool (numeric)
+                  </label>
+                </div>
+              </div>
+            )}
+            {(playerCharacter.customResources || []).length > 0 ? (
+              <div className="grid grid-cols-3 gap-2">
+                {(playerCharacter.customResources || []).map((res, i) => {
+                  const colors = getColorById(res.color);
+                  return (
+                    <div key={i} className={`bg-gray-800/50 border ${colors.border}/50 p-2 rounded`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className={`${colors.text} font-mono text-sm`}>{res.name}</span>
+                        <button onClick={() => removeCustomResource(i)} className="text-gray-500 hover:text-red-400 font-mono text-xs">×</button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-500 font-mono text-xs">Max:</span>
+                        <input type="number" value={res.max} onChange={(e) => updateCustomResource(i, 'max', parseInt(e.target.value) || 1)} className={`w-12 bg-gray-900 border ${colors.border}/30 ${colors.text} px-1 py-0.5 text-center font-mono text-sm`} min={1} />
+                        <div className={`w-4 h-4 rounded-full ${colors.bg}`} />
+                        {res.shortRest && <span className="text-gray-500 text-xs">(SR)</span>}
+                        {res.isPool && <span className="text-gray-500 text-xs">(Pool)</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-gray-500 font-mono text-sm">No custom resources added</div>
+            )}
+          </div>
+
+          {/* Features Section */}
+          <div className="bg-gray-900/50 border border-yellow-500/30 p-3 rounded">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-yellow-400 font-mono text-sm">FEATURES & ABILITIES</span>
+              <button onClick={() => setAddingFeature(true)} className="px-2 py-0.5 bg-gray-800/50 border border-yellow-500/30 text-yellow-300 font-mono text-xs hover:border-yellow-400">+ ADD</button>
+            </div>
+            {addingFeature && (
+              <div className="flex gap-2 mb-2">
+                <input type="text" id="configFeatName" placeholder="Feature name" className="flex-1 bg-gray-800 border border-yellow-500/30 text-yellow-300 px-2 py-1 font-mono text-sm" autoFocus />
+                <button onClick={() => { const name = document.getElementById('configFeatName').value; if (name.trim()) addFeature(name.trim(), ''); }} className="px-2 py-1 bg-yellow-500/20 border border-yellow-400 text-yellow-300 font-mono text-xs">ADD</button>
+                <button onClick={() => setAddingFeature(false)} className="px-2 py-1 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-xs">×</button>
+              </div>
+            )}
+            {playerCharacter.features.length > 0 ? (
+              <div className="flex flex-wrap gap-1">
+                {playerCharacter.features.map((feat, i) => (
+                  <button key={i} onClick={() => removeFeature(i)} className="px-2 py-0.5 bg-yellow-900/30 border border-yellow-600/50 text-yellow-300 font-mono text-xs hover:border-red-400 hover:text-red-300" title="Click to remove">{feat.name}</button>
+                ))}
+              </div>
+            ) : (
+              <div className="text-gray-500 font-mono text-sm">No features added</div>
+            )}
+          </div>
+
+          {/* Proficiencies & Languages */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-gray-900/50 border border-gray-600 p-3 rounded">
+              <div className="text-gray-400 font-mono text-xs mb-1">PROFICIENCIES</div>
+              <textarea value={playerCharacter.proficiencies} onChange={(e) => setPlayerCharacter(p => ({ ...p, proficiencies: e.target.value }))} className="w-full bg-gray-800 border border-gray-600 text-gray-300 font-mono text-sm resize-none h-20 p-2" placeholder="Armor, weapons, tools..."></textarea>
+            </div>
+            <div className="bg-gray-900/50 border border-gray-600 p-3 rounded">
+              <div className="text-gray-400 font-mono text-xs mb-1">LANGUAGES</div>
+              <textarea value={playerCharacter.languages} onChange={(e) => setPlayerCharacter(p => ({ ...p, languages: e.target.value }))} className="w-full bg-gray-800 border border-gray-600 text-gray-300 font-mono text-sm resize-none h-20 p-2" placeholder="Common, Elvish..."></textarea>
+            </div>
+          </div>
+
+          {/* Notes Section */}
+          <div className="bg-gray-900/50 border border-gray-600 p-3 rounded">
+            <div className="text-gray-400 font-mono text-xs mb-1">NOTES</div>
+            <textarea value={playerCharacter.notes || ''} onChange={(e) => setPlayerCharacter(p => ({ ...p, notes: e.target.value }))} className="w-full bg-gray-800 border border-gray-600 text-gray-300 font-mono text-sm resize-none h-24 p-2" placeholder="Character notes, backstory, goals..."></textarea>
+          </div>
+        </div>
       ) : (
-        /* ==================== CHARACTER SHEET ==================== */
+        /* ==================== MAIN VIEW (GAMEPLAY) ==================== */
         <div className="flex-1 flex flex-col gap-2 overflow-auto hide-scrollbar">
-          {/* Top Stats Row */}
+          {/* Quick Stats Bar */}
           <div className="flex gap-2">
-            {/* Speed, Initiative, AC group */}
-            <div className="flex gap-2 bg-gray-900/50 border border-cyan-500/30 p-2 rounded">
-              <div className="text-center">
-                <div className="text-cyan-400 font-mono text-xs">SPEED</div>
-                <input type="number" value={playerCharacter.speed} onChange={(e) => setPlayerCharacter(p => ({ ...p, speed: parseInt(e.target.value) || 30 }))} className="w-12 bg-gray-800 border border-cyan-500/30 text-cyan-300 px-1 py-0.5 text-center font-mono text-xl" />
+            <div className="flex-1 bg-gray-900/50 border border-green-500/30 p-2 rounded">
+              <div className="flex items-center gap-2">
+                <span className="text-green-400 font-mono text-sm">HP</span>
+                <span className="text-2xl font-mono font-bold" style={{color: playerCharacter.hp.current <= playerCharacter.hp.max * 0.25 ? '#f87171' : playerCharacter.hp.current <= playerCharacter.hp.max * 0.5 ? '#facc15' : '#4ade80'}}>{playerCharacter.hp.current}</span>
+                <span className="text-gray-500 font-mono">/ {playerCharacter.hp.max}</span>
+                {playerCharacter.hp.temp > 0 && <span className="text-cyan-400 font-mono text-sm">+{playerCharacter.hp.temp}</span>}
               </div>
-              <div className="text-center">
-                <div className="text-cyan-400 font-mono text-xs">INITIATIVE</div>
-                <input type="number" value={playerCharacter.initiative} onChange={(e) => setPlayerCharacter(p => ({ ...p, initiative: parseInt(e.target.value) || 0 }))} className="w-12 bg-gray-800 border border-cyan-500/30 text-cyan-300 px-1 py-0.5 text-center font-mono text-xl" />
-              </div>
-              <div className="text-center">
-                <div className="text-cyan-400 font-mono text-xs">ARMOR CLASS</div>
-                <input type="number" value={playerCharacter.ac} onChange={(e) => setPlayerCharacter(p => ({ ...p, ac: parseInt(e.target.value) || 10 }))} className="w-12 bg-gray-800 border border-cyan-500/30 text-cyan-300 px-1 py-0.5 text-center font-mono text-xl" />
+              <div className="h-1.5 bg-gray-800 rounded overflow-hidden mt-1">
+                <div className="h-full transition-all duration-300" style={{width: `${(playerCharacter.hp.current / playerCharacter.hp.max) * 100}%`, background: playerCharacter.hp.current <= playerCharacter.hp.max * 0.25 ? '#f87171' : playerCharacter.hp.current <= playerCharacter.hp.max * 0.5 ? '#facc15' : '#4ade80'}} />
               </div>
             </div>
-
-            {/* Features & Abilities - inline */}
-            <div className="flex-1 bg-gray-900/50 border border-yellow-500/30 p-2 rounded">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-yellow-400 font-mono text-sm">FEATURES & ABILITIES</span>
-                <button onClick={() => setAddingFeature(true)} className="px-2 py-0.5 bg-gray-800/50 border border-yellow-500/30 text-yellow-300 font-mono text-xs hover:border-yellow-400">+ ADD</button>
-              </div>
-              {addingFeature ? (
-                <div className="flex gap-2">
-                  <input type="text" id="newFeatName" placeholder="Feature name" className="flex-1 bg-gray-800 border border-yellow-500/30 text-yellow-300 px-2 py-1 font-mono text-sm" autoFocus />
-                  <button onClick={() => { const name = document.getElementById('newFeatName').value; if (name.trim()) addFeature(name.trim(), ''); }} className="px-2 py-1 bg-yellow-500/20 border border-yellow-400 text-yellow-300 font-mono text-xs">ADD</button>
-                  <button onClick={() => setAddingFeature(false)} className="px-2 py-1 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-xs">×</button>
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-1">
-                  {playerCharacter.features.map((feat, i) => (
-                    <button key={i} onClick={() => removeFeature(i)} className="px-2 py-0.5 bg-yellow-900/30 border border-yellow-600/50 text-yellow-300 font-mono text-xs hover:border-red-400 hover:text-red-300" title="Click to remove">{feat.name}</button>
-                  ))}
-                  {playerCharacter.features.length === 0 && <span className="text-gray-500 font-mono text-sm">No features added</span>}
-                </div>
-              )}
-            </div>
-
-            {/* Proficiency */}
             <div className="bg-gray-900/50 border border-cyan-500/30 p-2 rounded text-center">
-              <div className="text-cyan-400 font-mono text-xs">PROFICIENCY</div>
-              <input type="number" value={playerCharacter.proficiencyBonus} onChange={(e) => setPlayerCharacter(p => ({ ...p, proficiencyBonus: parseInt(e.target.value) || 2 }))} className="w-12 bg-gray-800 border border-cyan-500/30 text-cyan-300 px-1 py-0.5 text-center font-mono text-xl" />
+              <div className="text-gray-500 font-mono text-xs">AC</div>
+              <div className="text-cyan-300 font-mono text-xl">{playerCharacter.ac}</div>
             </div>
-
-            {/* HP */}
-            <div className="bg-gray-900/50 border border-green-500/30 p-2 rounded">
-              <div className="text-green-400 font-mono text-xs text-right">HIT POINTS</div>
-              <div className="flex items-center gap-1">
-                <input type="number" value={playerCharacter.hp.current} onChange={(e) => updatePlayerHP('current', e.target.value)} className="w-12 bg-gray-800 border border-green-500/30 text-green-300 px-1 py-0.5 text-center font-mono text-lg" />
-                <span className="text-gray-500 font-mono">/</span>
-                <input type="number" value={playerCharacter.hp.max} onChange={(e) => updatePlayerHP('max', e.target.value)} className="w-12 bg-gray-800 border border-green-500/30 text-green-300 px-1 py-0.5 text-center font-mono text-lg" />
-              </div>
-              <div className="flex items-center justify-end gap-1">
-                <span className="text-cyan-500 font-mono text-xs">TEMP:</span>
-                <input type="number" value={playerCharacter.hp.temp} onChange={(e) => updatePlayerHP('temp', e.target.value)} className="w-10 bg-gray-800 border border-cyan-500/30 text-cyan-300 px-1 py-0.5 text-center font-mono text-sm" />
-              </div>
+            <div className="bg-gray-900/50 border border-cyan-500/30 p-2 rounded text-center">
+              <div className="text-gray-500 font-mono text-xs">INIT</div>
+              <div className="text-cyan-300 font-mono text-xl">{formatMod(playerCharacter.initiative)}</div>
+            </div>
+            <div className="bg-gray-900/50 border border-cyan-500/30 p-2 rounded text-center">
+              <div className="text-gray-500 font-mono text-xs">SPEED</div>
+              <div className="text-cyan-300 font-mono text-xl">{playerCharacter.speed}</div>
             </div>
           </div>
 
@@ -617,105 +866,91 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
               const mod = getAbilityMod(score);
               return (
                 <div key={ability} className="bg-gray-900/50 border border-cyan-500/30 p-2 rounded text-center">
-                  <div className="text-cyan-400 font-mono text-xs mb-1">{ability}</div>
-                  {editingAbility === ability ? (
-                    <input type="number" value={score} onChange={(e) => updatePlayerAbility(ability, e.target.value)} onBlur={() => setEditingAbility(null)} onKeyDown={(e) => e.key === 'Enter' && setEditingAbility(null)} className="w-12 bg-gray-800 border border-cyan-400 text-cyan-300 px-1 py-0.5 text-center font-mono text-lg mx-auto" autoFocus />
-                  ) : (
-                    <button onClick={() => setEditingAbility(ability)} className="text-cyan-300 font-mono text-lg hover:text-cyan-100">{score}</button>
-                  )}
-                  <div className="text-fuchsia-400 font-mono text-sm font-bold">{formatMod(mod)}</div>
+                  <div className="text-cyan-400 font-mono text-xs">{ability}</div>
+                  <div className="text-fuchsia-400 font-mono text-lg font-bold">{formatMod(mod)}</div>
+                  <div className="text-gray-500 font-mono text-xs">{score}</div>
                 </div>
               );
             })}
           </div>
 
-          {/* Spell Slots & Class Resources Row */}
-          <div className="flex gap-2">
-            {/* Spell Slots - Left */}
-            <div className="flex-1 bg-gray-900/50 border border-purple-500/30 p-2 rounded">
-              {Object.keys(playerCharacter.spellSlots || {}).length > 0 ? (
-                <div className="flex flex-wrap gap-1">
-                  {Object.entries(playerCharacter.spellSlots).map(([key, slot]) => (
-                    Array.from({ length: slot.max }).map((_, i) => {
-                      const available = i < slot.max - slot.used;
-                      return (
-                        <button
-                          key={`${key}-${i}`}
-                          onClick={() => available ? useSpellSlot(key) : restoreSpellSlot(key)}
-                          className={`w-7 h-7 rounded-full border-2 font-mono text-xs font-bold flex items-center justify-center transition-all ${
-                            slot.isPact
-                              ? (available ? 'bg-fuchsia-500 border-fuchsia-400 text-white' : 'bg-fuchsia-900/50 border-fuchsia-800 text-fuchsia-600')
-                              : (available ? 'bg-purple-500 border-purple-400 text-white' : 'bg-purple-900/50 border-purple-800 text-purple-600')
-                          }`}
-                          title={slot.isPact ? `Pact Slot (Lvl ${slot.level})` : `Level ${slot.level} Spell Slot`}
-                        >
-                          {slot.level}
-                        </button>
-                      );
-                    })
-                  ))}
-                </div>
-              ) : (
-                <div className="text-gray-500 font-mono text-sm">No spellcasting</div>
-              )}
+          {/* Spell Slots */}
+          {Object.keys(playerCharacter.spellSlots || {}).length > 0 && (
+            <div className="bg-gray-900/50 border border-purple-500/30 p-2 rounded">
+              <div className="flex flex-wrap gap-1">
+                {Object.entries(playerCharacter.spellSlots).map(([key, slot]) => (
+                  Array.from({ length: slot.max }).map((_, i) => {
+                    const available = i < slot.max - slot.used;
+                    const isPact = key === 'pact';
+                    return (
+                      <button
+                        key={`${key}-${i}`}
+                        onClick={() => available ? useSpellSlot(key) : restoreSpellSlot(key)}
+                        className={`w-7 h-7 rounded-full border-2 font-mono text-xs font-bold flex items-center justify-center transition-all ${
+                          isPact
+                            ? (available ? 'bg-fuchsia-500 border-fuchsia-400 text-white' : 'bg-fuchsia-900/50 border-fuchsia-800 text-fuchsia-600')
+                            : (available ? 'bg-purple-500 border-purple-400 text-white' : 'bg-purple-900/50 border-purple-800 text-purple-600')
+                        }`}
+                        title={isPact ? `Pact Slot (Lvl ${slot.level})` : `Level ${key} Spell Slot`}
+                      >
+                        {isPact ? slot.level : key}
+                      </button>
+                    );
+                  })
+                ))}
+              </div>
             </div>
+          )}
 
-            {/* Class Resources - Right */}
-            {(playerCharacter.classResources || []).length > 0 && (
-              <div className="flex gap-2">
-                {(playerCharacter.classResources || []).map((res, i) => {
-                  const colors = ABILITY_COLORS[res.ability] || ABILITY_COLORS.STR;
+          {/* Custom Resources */}
+          {(playerCharacter.customResources || []).length > 0 && (
+            <div className="bg-gray-900/50 border border-orange-500/30 p-2 rounded">
+              <div className="flex flex-wrap gap-2">
+                {(playerCharacter.customResources || []).map((res, i) => {
+                  const colors = getColorById(res.color);
                   return (
-                    <div key={i} className={`bg-gray-900/50 border ${colors.border}/30 p-2 rounded`}>
-                      <div className={`${colors.text} font-mono text-xs text-center mb-1`}>{res.name}</div>
+                    <div key={i} className={`flex items-center gap-1 bg-gray-800/50 px-2 py-1 rounded border ${colors.border}/30`}>
+                      <span className={`${colors.text} font-mono text-sm`}>{res.name}:</span>
                       {res.isPool ? (
-                        <input
-                          type="number"
-                          value={res.max - res.used}
-                          onChange={(e) => setClassResourcePool(i, e.target.value)}
-                          className={`w-12 bg-gray-800 border ${colors.border}/30 ${colors.text} px-1 py-0.5 text-center font-mono text-lg`}
-                          max={res.max}
-                          min={0}
-                        />
+                        <input type="number" value={res.max - res.used} onChange={(e) => {
+                          const val = parseInt(e.target.value) || 0;
+                          updateCustomResource(i, 'used', res.max - Math.max(0, Math.min(res.max, val)));
+                        }} className={`w-12 bg-gray-900 border ${colors.border}/30 ${colors.text} px-1 py-0.5 text-center font-mono text-sm`} min={0} max={res.max} />
                       ) : (
-                        <div className="flex gap-1 justify-center">
+                        <div className="flex gap-0.5">
                           {Array.from({ length: res.max }).map((_, j) => {
                             const available = j < res.max - res.used;
                             return (
-                              <button
-                                key={j}
-                                onClick={() => available ? useClassResource(i) : restoreClassResource(i)}
-                                className={`w-5 h-5 rounded-full border-2 transition-all ${available ? `${colors.bg} ${colors.border}` : `${colors.bgUsed} border-gray-600`}`}
-                              />
+                              <button key={j} onClick={() => updateCustomResource(i, 'used', available ? res.used + 1 : res.used - 1)} className={`w-4 h-4 rounded-sm border transition-all ${available ? `${colors.bg} ${colors.border}` : 'bg-gray-700 border-gray-600'}`} />
                             );
                           })}
                         </div>
                       )}
+                      {res.shortRest && <span className="text-gray-500 text-xs">(SR)</span>}
                     </div>
                   );
                 })}
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
-          {/* Spacer to push content up */}
+          {/* Features */}
+          {playerCharacter.features.length > 0 && (
+            <div className="bg-gray-900/50 border border-yellow-500/30 p-2 rounded">
+              <div className="flex flex-wrap gap-1">
+                {playerCharacter.features.map((feat, i) => (
+                  <span key={i} className="px-2 py-0.5 bg-yellow-900/30 border border-yellow-600/50 text-yellow-300 font-mono text-xs">{feat.name}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Spacer */}
           <div className="flex-1" />
-
-          {/* Proficiencies & Languages */}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-gray-900/50 border border-gray-600 p-2 rounded">
-              <div className="text-gray-400 font-mono text-xs mb-1">PROFICIENCIES</div>
-              <textarea value={playerCharacter.proficiencies} onChange={(e) => setPlayerCharacter(p => ({ ...p, proficiencies: e.target.value }))} className="w-full bg-transparent text-gray-300 font-mono text-sm resize-none h-16" placeholder="Armor, weapons, tools..."></textarea>
-            </div>
-            <div className="bg-gray-900/50 border border-gray-600 p-2 rounded">
-              <div className="text-gray-400 font-mono text-xs mb-1">LANGUAGES</div>
-              <textarea value={playerCharacter.languages} onChange={(e) => setPlayerCharacter(p => ({ ...p, languages: e.target.value }))} className="w-full bg-transparent text-gray-300 font-mono text-sm resize-none h-16" placeholder="Common, Elvish..."></textarea>
-            </div>
-          </div>
 
           {/* Bottom Actions */}
           <div className="flex gap-2">
-            <button onClick={() => { setShowPlayerCombat(true); setShowPlayerSheet(false); }} className="flex-1 py-2 bg-red-900/30 border border-red-500/50 text-red-300 font-mono text-sm hover:bg-red-500/20 hover:border-red-400 transition-all">⚔ COMBAT MODE</button>
+            <button onClick={() => setCurrentView('combat')} className="flex-1 py-2 bg-red-900/30 border border-red-500/50 text-red-300 font-mono text-sm hover:bg-red-500/20 hover:border-red-400 transition-all">⚔ COMBAT</button>
             <button onClick={shortRest} className="flex-1 py-2 bg-cyan-900/30 border border-cyan-500/50 text-cyan-300 font-mono text-sm hover:bg-cyan-500/20">SHORT REST</button>
             <button onClick={longRest} className="flex-1 py-2 bg-fuchsia-900/30 border border-fuchsia-500/50 text-fuchsia-300 font-mono text-sm hover:bg-fuchsia-500/20">LONG REST</button>
           </div>
