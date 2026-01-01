@@ -780,6 +780,41 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
     }));
   };
 
+  // ==================== IMPORT/EXPORT ====================
+  const exportCharacter = () => {
+    if (!playerCharacter) return;
+    const data = JSON.stringify(playerCharacter, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${playerCharacter.name.replace(/\s+/g, '-').toLowerCase()}-sheet.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importCharacter = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target.result);
+        // Basic validation - check for required fields
+        if (data.name && data.abilities && data.hp) {
+          setPlayerCharacter(data);
+          setPlayerSetupStep(null);
+        } else {
+          alert('Invalid character file format');
+        }
+      } catch (err) {
+        alert('Failed to parse character file');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
   // ==================== EXIT ====================
   const exitPlayerMode = () => {
     // Ensure character is saved before exiting
@@ -838,6 +873,7 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
         <div className="flex gap-1">
           {!playerSetupStep && <button onClick={() => setPlayerSetupStep('select')} className="px-2 py-1 text-xs font-mono border transition-all bg-gray-800/50 border-gray-600 text-gray-400 hover:border-cyan-500/50" title="Switch Character">↔</button>}
           {!playerSetupStep && currentView === 'main' && <button onClick={() => setCurrentView('config')} className="px-2 py-1 text-xs font-mono border transition-all bg-gray-800/50 border-gray-600 text-gray-400 hover:border-cyan-500/50">SHEET</button>}
+            {!playerSetupStep && <button onClick={exportCharacter} className="px-2 py-1 text-xs font-mono border transition-all bg-gray-800/50 border-gray-600 text-gray-400 hover:border-green-500/50" title="Export Character">💾</button>}
         </div>
       </div>
 
@@ -865,6 +901,7 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
                 <div className="h-px w-16 bg-gray-700" />
               </div>
               <button onClick={createStandaloneCharacter} className="px-6 py-3 bg-cyan-900/30 border-2 border-cyan-500/50 text-cyan-300 font-mono hover:bg-cyan-500/20 hover:border-cyan-400 transition-all">CREATE NEW OPERATIVE</button>
+              <label className="px-6 py-3 bg-green-900/30 border-2 border-green-500/50 text-green-300 font-mono hover:bg-green-500/20 hover:border-green-400 transition-all cursor-pointer">IMPORT CHARACTER<input type="file" accept=".json" onChange={importCharacter} className="hidden" /></label>
               <button onClick={exitPlayerMode} className="px-4 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm mt-4">◀ BACK TO DM MODE</button>
             </>
           )}
