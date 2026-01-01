@@ -15,6 +15,7 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
   const [addingSkill, setAddingSkill] = useState(false);
   const [newSkill, setNewSkill] = useState({ name: '', linkedResource: '', cost: 1, color: 'purple', notes: '' });
   const [openSkillIndex, setOpenSkillIndex] = useState(null);
+  const [selectedCastLevel, setSelectedCastLevel] = useState(null);
   const [addingInventoryItem, setAddingInventoryItem] = useState(false);
   const [newInventoryItem, setNewInventoryItem] = useState({ name: '', quantity: 1, weight: 0, notes: '' });
   const [addingAttack, setAddingAttack] = useState(false);
@@ -605,6 +606,49 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
     return getColorById('gray');
   };
 
+  // ==================== UPCASTING ====================
+  const getAvailableUpcastLevels = (skill) => {
+    if (!skill?.linkedResource) return [];
+    const [type, id] = skill.linkedResource.split('-');
+    
+    // Only spell-slot-linked skills can upcast
+    if (type !== 'spell') return [];
+    
+    const baseLevel = parseInt(id);
+    const cost = skill.cost || 1;
+    const availableLevels = [];
+    
+    // Check each spell slot level from base to 9
+    for (let level = baseLevel; level <= 9; level++) {
+      const slot = playerCharacter.spellSlots?.[level];
+      if (slot && (slot.max - slot.used) >= cost) {
+        availableLevels.push({ level, type: 'spell', key: String(level) });
+      }
+    }
+    
+    // Also check pact slots if they're high enough level
+    Object.entries(playerCharacter.spellSlots || {}).forEach(([key, slot]) => {
+      if (key.startsWith('pact') && slot.level >= baseLevel && (slot.max - slot.used) >= cost) {
+        availableLevels.push({ level: slot.level, type: 'pact', key, isPact: true });
+      }
+    });
+    
+    return availableLevels;
+  };
+
+  const useSkillAtLevel = (skillIndex, castLevel) => {
+    const skill = playerCharacter.skills?.[skillIndex];
+    if (!skill) return;
+    
+    const cost = skill.cost || 1;
+    
+    setPlayerCharacter(p => {
+      const slot = p.spellSlots?.[castLevel.key];
+      if (!slot || slot.used + cost > slot.max) return p;
+      return { ...p, spellSlots: { ...p.spellSlots, [castLevel.key]: { ...slot, used: slot.used + cost } } };
+    });
+  };
+
   // ==================== RESTING ====================
   const shortRest = () => {
     setPlayerCharacter(p => {
@@ -622,6 +666,7 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
     });
     resetActionEconomy();
     setOpenSkillIndex(null);
+    setSelectedCastLevel(null);
   };
 
   const longRest = () => {
@@ -642,6 +687,7 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
     resetActionEconomy();
     setPlayerConcentration(null);
     setOpenSkillIndex(null);
+    setSelectedCastLevel(null);
   };
 
   // ==================== ACTION ECONOMY ====================
@@ -1027,6 +1073,11 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
                   const skill = playerCharacter.skills[openSkillIndex];
                   const available = getSkillAvailable(skill);
                   const colors = getSkillColor(skill);
+                  const upcastLevels = getAvailableUpcastLevels(skill);
+                  const canUpcast = upcastLevels.length > 1;
+                  const effectiveLevel = selectedCastLevel || upcastLevels[0] || null;
+                  const canCast = effectiveLevel !== null;
+                  
                   return (
                     <div className={`border ${colors.border}/50 rounded p-3`}>
                       <div className="flex items-center justify-between mb-2">
@@ -1036,16 +1087,50 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
                       {skill.notes && (
                         <div className="text-gray-300 font-mono text-sm mb-3 whitespace-pre-wrap border-l-2 border-gray-600 pl-2">{skill.notes}</div>
                       )}
+                      {/* Upcast Level Selection */}
+                      {upcastLevels.length > 0 && (
+                        <div className="mb-3">
+                          <div className="text-gray-500 font-mono text-xs mb-1">CAST AT LEVEL:</div>
+                          <div className="flex flex-wrap gap-1">
+                            {upcastLevels.map((lvl) => {
+                              const isSelected = effectiveLevel && effectiveLevel.key === lvl.key;
+                              return (
+                                <button
+                                  key={lvl.key}
+                                  onClick={() => setSelectedCastLevel(lvl)}
+                                  className={`px-3 py-1 border font-mono text-sm transition-all ${
+                                    isSelected
+                                      ? (lvl.isPact ? 'bg-fuchsia-500/30 border-fuchsia-400 text-fuchsia-300' : 'bg-purple-500/30 border-purple-400 text-purple-300')
+                                      : 'bg-gray-800/50 border-gray-600 text-gray-400 hover:border-purple-500/50'
+                                  }`}
+                                >
+                                  {lvl.isPact ? `P${lvl.level}` : lvl.level}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                       <div className="flex gap-2">
                         <button
-                          onClick={() => { if (available) { useSkill(openSkillIndex); } setOpenSkillIndex(null); }}
-                          disabled={!available}
-                          className={`flex-1 py-2 border font-mono text-sm transition-all ${available ? `${colors.bg}/30 ${colors.border} ${colors.text} hover:${colors.bg}/50` : 'bg-gray-900/50 border-gray-700 text-gray-600 cursor-not-allowed'}`}
+                          onClick={() => {
+                            if (canCast && effectiveLevel) {
+                              if (upcastLevels.length > 0) {
+                                useSkillAtLevel(openSkillIndex, effectiveLevel);
+                              } else {
+                                useSkill(openSkillIndex);
+                              }
+                            }
+                            setOpenSkillIndex(null);
+                            setSelectedCastLevel(null);
+                          }}
+                          disabled={!canCast && !available}
+                          className={`flex-1 py-2 border font-mono text-sm transition-all ${(canCast || available) ? `${colors.bg}/30 ${colors.border} ${colors.text} hover:${colors.bg}/50` : 'bg-gray-900/50 border-gray-700 text-gray-600 cursor-not-allowed'}`}
                         >
-                          {available ? '⚡ USE' : 'NO RESOURCES'}
+                          {(canCast || available) ? (effectiveLevel ? `⚡ CAST${effectiveLevel.level > parseInt(skill.linkedResource?.split('-')[1] || 0) ? ` (LVL ${effectiveLevel.level})` : ''}` : '⚡ USE') : 'NO RESOURCES'}
                         </button>
                         <button
-                          onClick={() => setOpenSkillIndex(null)}
+                          onClick={() => { setOpenSkillIndex(null); setSelectedCastLevel(null); }}
                           className="flex-1 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm hover:border-gray-500"
                         >
                           ✕ CLOSE
@@ -1854,6 +1939,11 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
                   const skill = playerCharacter.skills[openSkillIndex];
                   const available = getSkillAvailable(skill);
                   const colors = getSkillColor(skill);
+                  const upcastLevels = getAvailableUpcastLevels(skill);
+                  const canUpcast = upcastLevels.length > 1;
+                  const effectiveLevel = selectedCastLevel || upcastLevels[0] || null;
+                  const canCast = effectiveLevel !== null;
+                  
                   return (
                     <div className={`border ${colors.border}/50 rounded p-3`}>
                       <div className="flex items-center justify-between mb-2">
@@ -1863,16 +1953,50 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
                       {skill.notes && (
                         <div className="text-gray-300 font-mono text-sm mb-3 whitespace-pre-wrap border-l-2 border-gray-600 pl-2">{skill.notes}</div>
                       )}
+                      {/* Upcast Level Selection */}
+                      {upcastLevels.length > 0 && (
+                        <div className="mb-3">
+                          <div className="text-gray-500 font-mono text-xs mb-1">CAST AT LEVEL:</div>
+                          <div className="flex flex-wrap gap-1">
+                            {upcastLevels.map((lvl) => {
+                              const isSelected = effectiveLevel && effectiveLevel.key === lvl.key;
+                              return (
+                                <button
+                                  key={lvl.key}
+                                  onClick={() => setSelectedCastLevel(lvl)}
+                                  className={`px-3 py-1 border font-mono text-sm transition-all ${
+                                    isSelected
+                                      ? (lvl.isPact ? 'bg-fuchsia-500/30 border-fuchsia-400 text-fuchsia-300' : 'bg-purple-500/30 border-purple-400 text-purple-300')
+                                      : 'bg-gray-800/50 border-gray-600 text-gray-400 hover:border-purple-500/50'
+                                  }`}
+                                >
+                                  {lvl.isPact ? `P${lvl.level}` : lvl.level}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                       <div className="flex gap-2">
                         <button
-                          onClick={() => { if (available) { useSkill(openSkillIndex); } setOpenSkillIndex(null); }}
-                          disabled={!available}
-                          className={`flex-1 py-2 border font-mono text-sm transition-all ${available ? `${colors.bg}/30 ${colors.border} ${colors.text} hover:${colors.bg}/50` : 'bg-gray-900/50 border-gray-700 text-gray-600 cursor-not-allowed'}`}
+                          onClick={() => {
+                            if (canCast && effectiveLevel) {
+                              if (upcastLevels.length > 0) {
+                                useSkillAtLevel(openSkillIndex, effectiveLevel);
+                              } else {
+                                useSkill(openSkillIndex);
+                              }
+                            }
+                            setOpenSkillIndex(null);
+                            setSelectedCastLevel(null);
+                          }}
+                          disabled={!canCast && !available}
+                          className={`flex-1 py-2 border font-mono text-sm transition-all ${(canCast || available) ? `${colors.bg}/30 ${colors.border} ${colors.text} hover:${colors.bg}/50` : 'bg-gray-900/50 border-gray-700 text-gray-600 cursor-not-allowed'}`}
                         >
-                          {available ? 'USE' : 'NO RESOURCES'}
+                          {(canCast || available) ? (effectiveLevel ? `CAST${effectiveLevel.level > parseInt(skill.linkedResource?.split('-')[1] || 0) ? ` (LVL ${effectiveLevel.level})` : ''}` : 'USE') : 'NO RESOURCES'}
                         </button>
                         <button
-                          onClick={() => setOpenSkillIndex(null)}
+                          onClick={() => { setOpenSkillIndex(null); setSelectedCastLevel(null); }}
                           className="flex-1 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm hover:border-gray-500"
                         >
                           ✕ CLOSE
