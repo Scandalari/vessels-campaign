@@ -42,6 +42,28 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
 
   const getColorById = (colorId) => RESOURCE_COLORS.find(c => c.id === colorId) || RESOURCE_COLORS[4];
 
+  // ==================== SKILL PROFICIENCIES ====================
+  const SKILL_LIST = [
+    { name: 'Acrobatics', ability: 'DEX' },
+    { name: 'Animal Handling', ability: 'WIS' },
+    { name: 'Arcana', ability: 'INT' },
+    { name: 'Athletics', ability: 'STR' },
+    { name: 'Deception', ability: 'CHA' },
+    { name: 'History', ability: 'INT' },
+    { name: 'Insight', ability: 'WIS' },
+    { name: 'Intimidation', ability: 'CHA' },
+    { name: 'Investigation', ability: 'INT' },
+    { name: 'Medicine', ability: 'WIS' },
+    { name: 'Nature', ability: 'INT' },
+    { name: 'Perception', ability: 'WIS' },
+    { name: 'Performance', ability: 'CHA' },
+    { name: 'Persuasion', ability: 'CHA' },
+    { name: 'Religion', ability: 'INT' },
+    { name: 'Sleight of Hand', ability: 'DEX' },
+    { name: 'Stealth', ability: 'DEX' },
+    { name: 'Survival', ability: 'WIS' },
+  ];
+
   // ==================== HELPERS ====================
   const getAbilityMod = (score) => Math.floor((score - 10) / 2);
   const formatMod = (mod) => mod >= 0 ? `+${mod}` : `${mod}`;
@@ -110,7 +132,8 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
     proficiencies: '',
     languages: 'Common',
     notes: '',
-    deathSaves: { successes: 0, failures: 0 }
+    deathSaves: { successes: 0, failures: 0 },
+    skillProficiencies: {} // { 'Acrobatics': 'none' | 'proficient' | 'expertise' }
   });
 
   const initializeCharacterResources = (character) => {
@@ -344,6 +367,25 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
       ...p,
       savingThrows: { ...p.savingThrows, [ability]: !p.savingThrows?.[ability] }
     }));
+  };
+
+  // ==================== SKILL PROFICIENCY CYCLING ====================
+  const cycleSkillProficiency = (skillName) => {
+    setPlayerCharacter(p => {
+      const current = p.skillProficiencies?.[skillName] || 'none';
+      const next = current === 'none' ? 'proficient' : current === 'proficient' ? 'expertise' : 'none';
+      return { ...p, skillProficiencies: { ...p.skillProficiencies, [skillName]: next } };
+    });
+  };
+
+  const getSkillBonus = (skillName) => {
+    const skill = SKILL_LIST.find(s => s.name === skillName);
+    if (!skill) return 0;
+    const mod = getAbilityMod(playerCharacter.abilities[skill.ability]);
+    const profLevel = playerCharacter.skillProficiencies?.[skillName] || 'none';
+    if (profLevel === 'expertise') return mod + (playerCharacter.proficiencyBonus * 2);
+    if (profLevel === 'proficient') return mod + playerCharacter.proficiencyBonus;
+    return mod;
   };
 
   // ==================== CONFIG: SPELL SLOTS ====================
@@ -1039,6 +1081,39 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
             </div>
           </div>
 
+          {/* Skill Proficiencies Section */}
+          <div className="bg-gray-900/50 border border-green-500/30 p-3 rounded">
+            <div className="text-green-400 font-mono text-sm mb-2">SKILL PROFICIENCIES</div>
+            <div className="text-gray-500 font-mono text-xs mb-2">Click to cycle: None → Proficient → Expertise</div>
+            <div className="grid grid-cols-3 gap-2">
+              {SKILL_LIST.map(skill => {
+                const profLevel = playerCharacter.skillProficiencies?.[skill.name] || 'none';
+                const bonus = getSkillBonus(skill.name);
+                return (
+                  <button
+                    key={skill.name}
+                    onClick={() => cycleSkillProficiency(skill.name)}
+                    className={`flex items-center justify-between px-2 py-1.5 border font-mono text-sm transition-all ${
+                      profLevel === 'expertise' ? 'bg-yellow-900/30 border-yellow-500/50 text-yellow-300' :
+                      profLevel === 'proficient' ? 'bg-green-900/30 border-green-500/50 text-green-300' :
+                      'bg-gray-800/50 border-gray-600 text-gray-400'
+                    }`}
+                  >
+                    <span className="flex items-center gap-1">
+                      <span className={`w-2 h-2 rounded-full ${
+                        profLevel === 'expertise' ? 'bg-yellow-400' :
+                        profLevel === 'proficient' ? 'bg-green-400' :
+                        'bg-gray-600'
+                      }`} />
+                      {skill.name}
+                    </span>
+                    <span className="text-xs opacity-70">({skill.ability}) {formatMod(bonus)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Spell Slots Section */}
           <div className="bg-gray-900/50 border border-purple-500/30 p-3 rounded">
             <div className="text-purple-400 font-mono text-sm mb-2">SPELL SLOTS</div>
@@ -1294,6 +1369,35 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
               );
             })}
           </div>
+
+          {/* Skill Proficiencies */}
+          {Object.values(playerCharacter.skillProficiencies || {}).some(v => v !== 'none') && (
+            <div className="bg-gray-900/50 border border-green-500/30 p-2 rounded">
+              <div className="flex flex-wrap gap-1">
+                {SKILL_LIST.filter(skill => {
+                  const prof = playerCharacter.skillProficiencies?.[skill.name];
+                  return prof === 'proficient' || prof === 'expertise';
+                }).map(skill => {
+                  const profLevel = playerCharacter.skillProficiencies?.[skill.name];
+                  const bonus = getSkillBonus(skill.name);
+                  const isExpertise = profLevel === 'expertise';
+                  return (
+                    <div
+                      key={skill.name}
+                      className={`px-2 py-1 border font-mono text-xs flex items-center gap-1 ${
+                        isExpertise ? 'bg-yellow-900/30 border-yellow-500/50 text-yellow-300' : 'bg-green-900/30 border-green-500/50 text-green-300'
+                      }`}
+                      title={`${skill.ability} ${isExpertise ? '(Expertise)' : '(Proficient)'}`}
+                    >
+                      <span>{skill.name}</span>
+                      <span className="font-bold">{formatMod(bonus)}</span>
+                      {isExpertise && <span className="text-yellow-400">★</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Spell Slots */}
           {Object.keys(playerCharacter.spellSlots || {}).length > 0 && (
