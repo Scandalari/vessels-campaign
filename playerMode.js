@@ -22,11 +22,23 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
   const [actionEconomy, setActionEconomy] = useState({ Action: true, Bonus: true, Reaction: true, Movement: true, Object: true });
   const [playerConcentration, setPlayerConcentration] = useState(null);
   const [damageInput, setDamageInput] = useState('');
+  const [characterCache, setCharacterCache] = useState(() => {
+    // Initialize cache with savedCharacter if it exists
+    if (savedCharacter) {
+      return { [savedCharacter.id]: savedCharacter };
+    }
+    return {};
+  });
 
   // ==================== SAVE CHARACTER CHANGES ====================
   useEffect(() => {
     if (playerCharacter) {
       onSaveCharacter(playerCharacter);
+      // Also cache locally so switching characters doesn't lose data
+      setCharacterCache(prev => ({
+        ...prev,
+        [playerCharacter.id]: playerCharacter
+      }));
     }
   }, [playerCharacter]);
 
@@ -162,7 +174,14 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
       return;
     }
     
-    // If we have a saved character that matches this party member, restore it
+    // Check local cache first (preserves changes across character switches)
+    if (characterCache[member.id]) {
+      setPlayerCharacter(characterCache[member.id]);
+      setPlayerSetupStep(null);
+      return;
+    }
+    
+    // If we have a saved character from parent that matches, restore it
     if (savedCharacter && savedCharacter.id === member.id) {
       setPlayerCharacter(savedCharacter);
       setPlayerSetupStep(null);
