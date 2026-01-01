@@ -1371,33 +1371,30 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
           </div>
 
           {/* Skill Proficiencies */}
-          {Object.values(playerCharacter.skillProficiencies || {}).some(v => v !== 'none') && (
-            <div className="bg-gray-900/50 border border-green-500/30 p-2 rounded">
-              <div className="flex flex-wrap gap-1">
-                {SKILL_LIST.filter(skill => {
-                  const prof = playerCharacter.skillProficiencies?.[skill.name];
-                  return prof === 'proficient' || prof === 'expertise';
-                }).map(skill => {
-                  const profLevel = playerCharacter.skillProficiencies?.[skill.name];
-                  const bonus = getSkillBonus(skill.name);
-                  const isExpertise = profLevel === 'expertise';
-                  return (
-                    <div
-                      key={skill.name}
-                      className={`px-2 py-1 border font-mono text-xs flex items-center gap-1 ${
-                        isExpertise ? 'bg-yellow-900/30 border-yellow-500/50 text-yellow-300' : 'bg-green-900/30 border-green-500/50 text-green-300'
-                      }`}
-                      title={`${skill.ability} ${isExpertise ? '(Expertise)' : '(Proficient)'}`}
-                    >
-                      <span>{skill.name}</span>
-                      <span className="font-bold">{formatMod(bonus)}</span>
-                      {isExpertise && <span className="text-yellow-400">★</span>}
-                    </div>
-                  );
-                })}
-              </div>
+          <div className="bg-gray-900/50 border border-gray-600 p-2 rounded">
+            <div className="grid grid-cols-6 gap-1">
+              {SKILL_LIST.map(skill => {
+                const profLevel = playerCharacter.skillProficiencies?.[skill.name] || 'none';
+                const bonus = getSkillBonus(skill.name);
+                const isExpertise = profLevel === 'expertise';
+                const isProficient = profLevel === 'proficient';
+                return (
+                  <div
+                    key={skill.name}
+                    className={`px-1 py-0.5 border font-mono text-xs flex items-center justify-between ${
+                      isExpertise ? 'bg-yellow-900/30 border-yellow-500/50 text-yellow-300' :
+                      isProficient ? 'bg-green-900/30 border-green-500/50 text-green-300' :
+                      'bg-gray-800/30 border-gray-700 text-gray-400'
+                    }`}
+                    title={`${skill.name} (${skill.ability})${isExpertise ? ' - Expertise' : isProficient ? ' - Proficient' : ''}`}
+                  >
+                    <span className="truncate">{skill.name.length > 10 ? skill.name.slice(0, 8) + '.' : skill.name}</span>
+                    <span className="font-bold ml-1">{formatMod(bonus)}</span>
+                  </div>
+                );
+              })}
             </div>
-          )}
+          </div>
 
           {/* Spell Slots */}
           {Object.keys(playerCharacter.spellSlots || {}).length > 0 && (
