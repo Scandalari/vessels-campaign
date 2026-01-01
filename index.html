@@ -1,0 +1,1999 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a0f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>XP Tracker</title>
+  <link rel="manifest" href="manifest.json">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="constants.js"></script>
+  <script src="utils.js"></script>
+  <script src="items.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; overflow: hidden; }
+    input[type=number]::-webkit-inner-spin-button, 
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type=number] { -moz-appearance: textfield; }
+    .xp-btn { container-type: size; }
+    .xp-btn .xp-name { font-size: clamp(0.5rem, 18cqi, 0.875rem); }
+    .xp-btn .xp-value { font-size: clamp(0.4rem, 14cqi, 0.7rem); }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    function XPTracker() {
+      // ==================== STATE ====================
+      const [totalXp, setTotalXp] = useState(900);
+      const [pendingXp, setPendingXp] = useState(0);
+      const [pendingLog, setPendingLog] = useState([]);
+      const [recapMultiplier, setRecapMultiplier] = useState(false);
+      const [presenceMultiplier, setPresenceMultiplier] = useState(false);
+      const [showPendingLog, setShowPendingLog] = useState(false);
+      const [sessionHistory, setSessionHistory] = useState([]);
+      const [showHistory, setShowHistory] = useState(false);
+      const [loaded, setLoaded] = useState(false);
+      const [confirmDelete, setConfirmDelete] = useState(false);
+      const [party, setParty] = useState([]);
+      const [showParty, setShowParty] = useState(false);
+      const [addingPlayer, setAddingPlayer] = useState(null);
+      const [statusTimers, setStatusTimers] = useState({});
+      const [minions, setMinions] = useState([]);
+      const [addingMinion, setAddingMinion] = useState(null);
+      const [showCombat, setShowCombat] = useState(false);
+      const [enemies, setEnemies] = useState([]);
+      const [combatants, setCombatants] = useState([]);
+      const [addingEnemy, setAddingEnemy] = useState(null);
+      const [currentTurn, setCurrentTurn] = useState(0);
+      const [currentRound, setCurrentRound] = useState(1);
+      const [addingCondition, setAddingCondition] = useState(null);
+      const [confirmRemoveCondition, setConfirmRemoveCondition] = useState(null);
+      const [deathSaveTarget, setDeathSaveTarget] = useState(null);
+      const [editingInitiative, setEditingInitiative] = useState(null);
+      const [hdywtdt, setHdywtdt] = useState(null);
+      const [midCombatAdd, setMidCombatAdd] = useState(null);
+      const [addingFeat, setAddingFeat] = useState(null);
+      const [confirmDeleteChar, setConfirmDeleteChar] = useState(null);
+      const [showShopLoot, setShowShopLoot] = useState(false);
+      const [shopLootMode, setShopLootMode] = useState(null);
+      const [selectedShopType, setSelectedShopType] = useState(null);
+      const [shopResults, setShopResults] = useState(null);
+      const [selectedLootType, setSelectedLootType] = useState(null);
+      const [selectedCR, setSelectedCR] = useState(null);
+      const [lootResults, setLootResults] = useState(null);
+
+      // ==================== PLAYER MODE STATE ====================
+      const [isPlayerMode, setIsPlayerMode] = useState(false);
+      const [playerCharacter, setPlayerCharacter] = useState(null);
+      const [showPlayerSheet, setShowPlayerSheet] = useState(true);
+      const [showPlayerCombat, setShowPlayerCombat] = useState(false);
+      const [playerSetupStep, setPlayerSetupStep] = useState(null); // 'select', 'create', 'abilities'
+      const [editingAbility, setEditingAbility] = useState(null);
+      const [editingHP, setEditingHP] = useState(null);
+      const [addingResource, setAddingResource] = useState(false);
+      const [addingFeature, setAddingFeature] = useState(false);
+      const [editingField, setEditingField] = useState(null);
+      const [actionEconomy, setActionEconomy] = useState({ Action: true, Bonus: true, Reaction: true, Movement: true, Object: true });
+      const [playerConcentration, setPlayerConcentration] = useState(null);
+      const [damageInput, setDamageInput] = useState('');
+
+      // ==================== COMPUTED VALUES ====================
+      const getMultiplier = () => (1 + (recapMultiplier ? 0.05 : 0) + (presenceMultiplier ? 0.05 : 0));
+      const getLevel = (xp) => levelThresholds.findIndex((t, i) => xp < (levelThresholds[i + 1] || Infinity)) + 1;
+      const getNextThreshold = (xp) => levelThresholds[getLevel(xp)] || 355000;
+      const getPrevThreshold = (xp) => levelThresholds[getLevel(xp) - 1] || 0;
+      const getNextSessionNumber = () => sessionHistory.length;
+      const getCharacterLevel = (char) => char.classes.reduce((sum, c) => sum + c.level, 0);
+      const partyLevel = getLevel(totalXp);
+      const livingPartySize = party.filter(c => !c.kia).length || 1;
+      const willLevelUp = () => getLevel(totalXp + pendingXp) > getLevel(totalXp);
+
+      // ==================== PLAYER MODE HELPERS ====================
+      const getAbilityMod = (score) => Math.floor((score - 10) / 2);
+      const formatMod = (mod) => mod >= 0 ? `+${mod}` : `${mod}`;
+      
+      const getPlayerLevel = () => {
+        if (!playerCharacter) return 1;
+        return playerCharacter.classes.reduce((sum, c) => sum + c.level, 0);
+      };
+
+      const getPlayerSpellSlots = (char) => {
+        const character = char || playerCharacter;
+        if (!character) return [];
+        let casterLevel = 0;
+        let isWarlock = false;
+        
+        character.classes.forEach(c => {
+          const type = CASTER_TYPES[c.name];
+          if (type === 'full') casterLevel += c.level;
+          else if (type === 'half' && c.level >= 2) casterLevel += Math.floor(c.level / 2);
+          else if (type === 'third' && c.level >= 3) casterLevel += Math.floor(c.level / 3);
+          else if (type === 'warlock') isWarlock = true;
+        });
+
+        if (isWarlock && character.classes.length === 1) {
+          const warlockLevel = character.classes[0].level;
+          const [slots, slotLevel] = WARLOCK_SLOTS[Math.min(warlockLevel - 1, 19)];
+          return [{ level: slotLevel, max: slots, type: 'pact' }];
+        }
+
+        if (casterLevel === 0) return [];
+        const slots = FULL_CASTER_SLOTS[Math.min(casterLevel - 1, 19)];
+        return slots.map((max, i) => ({ level: i + 1, max, type: 'standard' })).filter(s => s.max > 0);
+      };
+
+      const createDefaultPlayerCharacter = (partyMember) => ({
+        id: partyMember?.id || Date.now(),
+        linkedToParty: !!partyMember,
+        name: partyMember?.name || 'New Operative',
+        origin: partyMember?.origin || 'Lifer',
+        classes: partyMember?.classes || [{ name: 'Fighter', level: 1, subclass: null }],
+        abilities: { STR: 10, DEX: 10, CON: 10, INT: 10, WIS: 10, CHA: 10 },
+        hp: { current: 10, max: 10, temp: 0 },
+        ac: 10,
+        initiative: 0,
+        speed: 30,
+        proficiencyBonus: 2,
+        spellSlots: {},
+        resources: [],
+        features: [],
+        proficiencies: '',
+        languages: 'Common',
+        notes: '',
+        deathSaves: { successes: 0, failures: 0 }
+      });
+
+      const initializeSpellSlots = (character) => {
+        const slots = getPlayerSpellSlots(character);
+        const spellSlots = {};
+        slots.forEach(s => { spellSlots[s.level] = { used: 0, max: s.max }; });
+        return { ...character, spellSlots };
+      };
+
+      const selectPartyMember = (member) => {
+        const char = createDefaultPlayerCharacter(member);
+        const withSlots = initializeSpellSlots(char);
+        setPlayerCharacter(withSlots);
+        setPlayerSetupStep(null);
+      };
+
+      const createStandaloneCharacter = () => {
+        setPlayerSetupStep('create');
+      };
+
+      const updatePlayerAbility = (ability, value) => {
+        setPlayerCharacter(p => ({ ...p, abilities: { ...p.abilities, [ability]: parseInt(value) || 10 } }));
+      };
+
+      const updatePlayerHP = (field, value) => {
+        setPlayerCharacter(p => ({ ...p, hp: { ...p.hp, [field]: parseInt(value) || 0 } }));
+      };
+
+      const applyDamage = (amount) => {
+        if (!amount) return;
+        const dmg = parseInt(amount);
+        setPlayerCharacter(p => {
+          let remaining = dmg;
+          let newTemp = p.hp.temp;
+          let newCurrent = p.hp.current;
+          
+          if (newTemp > 0) {
+            if (remaining <= newTemp) {
+              newTemp -= remaining;
+              remaining = 0;
+            } else {
+              remaining -= newTemp;
+              newTemp = 0;
+            }
+          }
+          newCurrent = Math.max(0, newCurrent - remaining);
+          return { ...p, hp: { ...p.hp, current: newCurrent, temp: newTemp } };
+        });
+        setDamageInput('');
+      };
+
+      const applyHealing = (amount) => {
+        if (!amount) return;
+        const heal = parseInt(amount);
+        setPlayerCharacter(p => ({
+          ...p,
+          hp: { ...p.hp, current: Math.min(p.hp.max, p.hp.current + heal) }
+        }));
+        setDamageInput('');
+      };
+
+      const useSpellSlot = (level) => {
+        setPlayerCharacter(p => {
+          const slot = p.spellSlots[level];
+          if (!slot || slot.used >= slot.max) return p;
+          return { ...p, spellSlots: { ...p.spellSlots, [level]: { ...slot, used: slot.used + 1 } } };
+        });
+      };
+
+      const restoreSpellSlot = (level) => {
+        setPlayerCharacter(p => {
+          const slot = p.spellSlots[level];
+          if (!slot || slot.used <= 0) return p;
+          return { ...p, spellSlots: { ...p.spellSlots, [level]: { ...slot, used: slot.used - 1 } } };
+        });
+      };
+
+      const useResource = (index) => {
+        setPlayerCharacter(p => {
+          const res = p.resources[index];
+          if (!res || res.used >= res.max) return p;
+          const newResources = [...p.resources];
+          newResources[index] = { ...res, used: res.used + 1 };
+          return { ...p, resources: newResources };
+        });
+      };
+
+      const restoreResource = (index) => {
+        setPlayerCharacter(p => {
+          const res = p.resources[index];
+          if (!res || res.used <= 0) return p;
+          const newResources = [...p.resources];
+          newResources[index] = { ...res, used: res.used - 1 };
+          return { ...p, resources: newResources };
+        });
+      };
+
+      const addResource = (name, max, shortRest) => {
+        setPlayerCharacter(p => ({
+          ...p,
+          resources: [...p.resources, { name, max: parseInt(max) || 1, used: 0, shortRest }]
+        }));
+        setAddingResource(false);
+      };
+
+      const removeResource = (index) => {
+        setPlayerCharacter(p => ({
+          ...p,
+          resources: p.resources.filter((_, i) => i !== index)
+        }));
+      };
+
+      const addFeature = (name, description) => {
+        setPlayerCharacter(p => ({
+          ...p,
+          features: [...p.features, { name, description }]
+        }));
+        setAddingFeature(false);
+      };
+
+      const removeFeature = (index) => {
+        setPlayerCharacter(p => ({
+          ...p,
+          features: p.features.filter((_, i) => i !== index)
+        }));
+      };
+
+      const shortRest = () => {
+        setPlayerCharacter(p => ({
+          ...p,
+          resources: p.resources.map(r => r.shortRest ? { ...r, used: 0 } : r)
+        }));
+        resetActionEconomy();
+      };
+
+      const longRest = () => {
+        setPlayerCharacter(p => {
+          const restoredSlots = {};
+          Object.keys(p.spellSlots).forEach(level => {
+            restoredSlots[level] = { ...p.spellSlots[level], used: 0 };
+          });
+          return {
+            ...p,
+            hp: { ...p.hp, current: p.hp.max, temp: 0 },
+            spellSlots: restoredSlots,
+            resources: p.resources.map(r => ({ ...r, used: 0 })),
+            deathSaves: { successes: 0, failures: 0 }
+          };
+        });
+        resetActionEconomy();
+        setPlayerConcentration(null);
+      };
+
+      const resetActionEconomy = () => {
+        setActionEconomy({ Action: true, Bonus: true, Reaction: true, Movement: true, Object: true });
+      };
+
+      const toggleAction = (action) => {
+        setActionEconomy(p => ({ ...p, [action]: !p[action] }));
+      };
+
+      const updatePlayerDeathSave = (type, delta) => {
+        setPlayerCharacter(p => {
+          const newSaves = { ...p.deathSaves };
+          newSaves[type] = Math.max(0, Math.min(3, newSaves[type] + delta));
+          return { ...p, deathSaves: newSaves };
+        });
+      };
+
+      const resetPlayerDeathSaves = () => {
+        setPlayerCharacter(p => ({ ...p, deathSaves: { successes: 0, failures: 0 } }));
+      };
+
+      const togglePlayerMode = () => {
+        const newMode = !isPlayerMode;
+        setIsPlayerMode(newMode);
+        if (newMode && !playerCharacter) {
+          setPlayerSetupStep('select');
+        }
+        // Reset DM views when switching
+        setShowHistory(false);
+        setShowParty(false);
+        setShowCombat(false);
+        setShowShopLoot(false);
+      };
+
+      const exitPlayerMode = () => {
+        setIsPlayerMode(false);
+        setShowPlayerSheet(true);
+        setShowPlayerCombat(false);
+      };
+
+      // ==================== SHOP & LOOT ====================
+      const rollShopInventory = (shopType) => {
+        const available = items.filter(i => i.shops?.includes(shopType));
+        if (available.length === 0) return [];
+        return shuffle(available).slice(0, Math.min(SHOP_ITEM_COUNT, available.length)).map(item => ({
+          ...item,
+          rolledPrice: (item.price * (0.75 + Math.random() * 0.25)).toFixed(2)
+        }));
+      };
+
+      const selectShopType = (shopType) => {
+        setSelectedShopType(shopType);
+        setShopResults(rollShopInventory(shopType));
+      };
+
+      const rollTreasure = (crBracket) => {
+        const table = individualTreasure[crBracket];
+        const roll = rollD100();
+        const entry = table.find(e => roll >= e.range[0] && roll <= e.range[1]);
+        if (!entry) return { coins: {}, total: 0 };
+        const coins = {};
+        let total = 0;
+        for (const [type, dice] of Object.entries(entry.coins)) {
+          const amount = rollDice(dice);
+          coins[type] = amount;
+          if (type === 'cp') total += amount * 0.01;
+          else if (type === 'sp') total += amount * 0.1;
+          else if (type === 'ep') total += amount * 0.5;
+          else if (type === 'gp') total += amount;
+          else if (type === 'pp') total += amount * 10;
+        }
+        return { coins, total: total.toFixed(2) };
+      };
+
+      const rollLootItems = (lootType) => {
+        const available = items.filter(i => i.loot?.includes(lootType));
+        if (available.length === 0) return [];
+        const weights = rarityWeights[lootType];
+        const counts = lootItemCounts[lootType];
+        const itemCount = Math.floor(Math.random() * (counts.max - counts.min + 1)) + counts.min;
+        const result = [];
+        for (let i = 0; i < itemCount; i++) {
+          const targetRarity = weightedRandomRarity(weights);
+          const pool = available.filter(item => item.rarity === targetRarity);
+          if (pool.length > 0) {
+            const item = pool[Math.floor(Math.random() * pool.length)];
+            result.push({ ...item, rolledPrice: (item.price * (0.75 + Math.random() * 0.25)).toFixed(2) });
+          } else {
+            const fallback = available.filter(item => item.rarity === 'common');
+            if (fallback.length > 0) {
+              const item = fallback[Math.floor(Math.random() * fallback.length)];
+              result.push({ ...item, rolledPrice: (item.price * (0.75 + Math.random() * 0.25)).toFixed(2) });
+            }
+          }
+        }
+        return result;
+      };
+
+      const confirmLootRoll = (cr) => {
+        const treasure = rollTreasure(cr);
+        const lootItems = rollLootItems(selectedLootType);
+        setLootResults({ coins: treasure.coins, total: treasure.total, items: lootItems });
+      };
+
+      const resetShopLoot = () => {
+        setShopLootMode(null);
+        setSelectedShopType(null);
+        setShopResults(null);
+        setSelectedLootType(null);
+        setSelectedCR(null);
+        setLootResults(null);
+      };
+
+      // ==================== DATA MANAGEMENT ====================
+      const exportData = () => {
+        const data = { totalXp, sessionHistory, party, minions, isPlayerMode, playerCharacter, exportDate: new Date().toISOString() };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `xp-tracker-backup-${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      };
+
+      const importData = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const data = JSON.parse(event.target.result);
+            if (typeof data.totalXp === 'number' && Array.isArray(data.sessionHistory)) {
+              setTotalXp(data.totalXp);
+              setSessionHistory(data.sessionHistory);
+              if (data.party) setParty(data.party);
+              if (data.minions) setMinions(data.minions);
+              if (data.isPlayerMode !== undefined) setIsPlayerMode(data.isPlayerMode);
+              if (data.playerCharacter) setPlayerCharacter(data.playerCharacter);
+              alert('Import successful!');
+            } else {
+              alert('Invalid backup file format');
+            }
+          } catch (err) {
+            alert('Failed to parse backup file');
+          }
+        };
+        reader.readAsText(file);
+        e.target.value = '';
+      };
+
+      const deleteAllHistory = () => {
+        if (!confirmDelete) { setConfirmDelete(true); return; }
+        setTotalXp(900);
+        setSessionHistory([]);
+        setPendingXp(0);
+        setPendingLog([]);
+        setParty([]);
+        setMinions([]);
+        setPlayerCharacter(null);
+        setIsPlayerMode(false);
+        setPlayerSetupStep(null);
+        setConfirmDelete(false);
+      };
+
+      // ==================== PERSISTENCE ====================
+      useEffect(() => {
+        try {
+          const saved = localStorage.getItem('xp-tracker-data');
+          if (saved) {
+            const data = JSON.parse(saved);
+            setTotalXp(data.totalXp ?? 900);
+            setSessionHistory(data.sessionHistory || []);
+            setParty(data.party || []);
+            setMinions(data.minions || []);
+            // Player mode data
+            if (data.isPlayerMode !== undefined) setIsPlayerMode(data.isPlayerMode);
+            if (data.playerCharacter) {
+              setPlayerCharacter(data.playerCharacter);
+            } else if (data.isPlayerMode) {
+              setPlayerSetupStep('select');
+            }
+          }
+        } catch (e) { console.log('No saved data found'); }
+        setLoaded(true);
+      }, []);
+
+      useEffect(() => {
+        if (!loaded) return;
+        try {
+          localStorage.setItem('xp-tracker-data', JSON.stringify({ 
+            totalXp, sessionHistory, party, minions,
+            isPlayerMode, playerCharacter 
+          }));
+        } catch (e) { console.error('Failed to save:', e); }
+      }, [totalXp, sessionHistory, party, minions, loaded, isPlayerMode, playerCharacter]);
+
+      // ==================== XP ACTIONS ====================
+      const addXp = (name, baseXp) => {
+        const mult = getMultiplier();
+        const gained = Math.floor(baseXp * mult);
+        setPendingXp(p => p + gained);
+        setPendingLog(p => [...p, { name, gained }]);
+      };
+
+      const endSession = () => {
+        if (pendingXp === 0) return;
+        const levelBefore = getLevel(totalXp);
+        const newTotal = totalXp + pendingXp;
+        const levelAfter = getLevel(newTotal);
+        const session = {
+          number: getNextSessionNumber(),
+          date: new Date().toLocaleDateString(),
+          xpGained: pendingXp,
+          xpTotal: newTotal,
+          levelBefore,
+          levelAfter,
+          leveledUp: levelAfter > levelBefore,
+          log: [...pendingLog]
+        };
+        setSessionHistory(p => [...p, session]);
+        setTotalXp(newTotal);
+        setPendingXp(0);
+        setPendingLog([]);
+        setRecapMultiplier(false);
+        setPresenceMultiplier(false);
+        setShowPendingLog(false);
+      };
+
+      const clearPending = () => { setPendingXp(0); setPendingLog([]); setShowPendingLog(false); };
+
+      const removePendingEntry = (idx) => {
+        const entry = pendingLog[idx];
+        if (entry.type !== 'operative') {
+          setPendingXp(p => p - entry.gained);
+        } else if (entry.name.startsWith('+ ')) {
+          const charName = entry.name.slice(2);
+          setParty(p => p.filter(c => c.name !== charName));
+        } else if (entry.name.startsWith('☠ ')) {
+          const charName = entry.name.slice(2).replace(' KIA', '');
+          setParty(p => p.map(c => c.name === charName ? { ...c, kia: false } : c));
+        } else if (entry.name.startsWith('💉 ')) {
+          const charName = entry.name.slice(2).replace(' REVIVED', '');
+          setParty(p => p.map(c => c.name === charName ? { ...c, kia: true } : c));
+        }
+        setPendingLog(p => p.filter((_, i) => i !== idx));
+      };
+
+      // ==================== COMBAT ====================
+      const calculateEncounterXp = () => Math.floor(enemies.reduce((sum, e) => sum + e.xp, 0) / livingPartySize);
+      const getAdjustedXp = () => Math.floor(enemies.reduce((sum, e) => sum + e.xp, 0) * getEncounterMultiplier(enemies.length));
+
+      const getPartyThresholds = () => {
+        const lvl = getLevel(totalXp);
+        return {
+          easy: difficultyThresholds.easy[lvl - 1] * livingPartySize,
+          medium: difficultyThresholds.medium[lvl - 1] * livingPartySize,
+          hard: difficultyThresholds.hard[lvl - 1] * livingPartySize,
+          deadly: difficultyThresholds.deadly[lvl - 1] * livingPartySize
+        };
+      };
+
+      const getDifficulty = () => {
+        const adjusted = getAdjustedXp();
+        const thresholds = getPartyThresholds();
+        if (adjusted >= thresholds.deadly) return { label: 'DEADLY', color: '#f87171' };
+        if (adjusted >= thresholds.hard) return { label: 'HARD', color: '#fb923c' };
+        if (adjusted >= thresholds.medium) return { label: 'MEDIUM', color: '#facc15' };
+        if (adjusted >= thresholds.easy) return { label: 'EASY', color: '#4ade80' };
+        return { label: 'TRIVIAL', color: '#9ca3af' };
+      };
+
+      const startAddEnemy = (cr) => {
+        const roll = Math.floor(Math.random() * 20) + 1;
+        setAddingEnemy({ cr, xp: crToXp[cr], name: '', hp: '', initRoll: roll, initMod: 0, quantity: 1 });
+      };
+
+      const confirmAddEnemy = () => {
+        if (!addingEnemy.name || !addingEnemy.hp) return;
+        const newEnemies = [];
+        for (let i = 0; i < addingEnemy.quantity; i++) {
+          const roll = i === 0 ? addingEnemy.initRoll : Math.floor(Math.random() * 20) + 1;
+          newEnemies.push({
+            id: Date.now() + i,
+            type: 'enemy',
+            name: addingEnemy.quantity > 1 ? `${addingEnemy.name} ${i + 1}` : addingEnemy.name,
+            cr: addingEnemy.cr,
+            xp: addingEnemy.xp,
+            maxHp: parseInt(addingEnemy.hp),
+            currentHp: parseInt(addingEnemy.hp),
+            initiative: roll + addingEnemy.initMod,
+            dead: false,
+            conditions: []
+          });
+        }
+        setEnemies(p => [...p, ...newEnemies]);
+        setAddingEnemy(null);
+      };
+
+      const removeEnemy = (id) => setEnemies(p => p.filter(e => e.id !== id));
+
+      const startCombat = () => {
+        const livingParty = party.filter(c => !c.kia);
+        const partyMembers = livingParty.map(c => ({
+          id: c.id, type: 'party', name: c.name, initiative: 0, conditions: [], deathSaves: { successes: 0, failures: 0 }
+        }));
+        const activeMinions = minions.filter(m => livingParty.some(c => c.id === m.followingId)).map(m => ({
+          id: m.id, type: 'minion', name: m.name, minionType: m.type, followingId: m.followingId, followingName: m.followingName,
+          initiative: 0, attachedTo: m.followingId, conditions: [], deathSaves: { successes: 0, failures: 0 }
+        }));
+        setCombatants([...partyMembers, ...activeMinions, ...enemies.map(e => ({ ...e, conditions: [] }))]);
+        setCurrentTurn(0);
+        setCurrentRound(1);
+      };
+
+      const updatePartyInitiative = (id, value) => {
+        const newInit = parseInt(value) || 0;
+        setCombatants(p => p.map(c => {
+          if (c.id === id && c.type === 'party') return { ...c, initiative: newInit };
+          if (c.type === 'minion' && c.followingId === id) return { ...c, initiative: newInit };
+          return c;
+        }));
+      };
+
+      const setEnemyHp = (id, value) => {
+        const sorted = [...combatants].sort((a, b) => b.initiative - a.initiative);
+        const currentCombatant = sorted[currentTurn];
+        setCombatants(p => {
+          const updated = p.map(c => {
+            if (c.id !== id || c.type !== 'enemy') return c;
+            const newHp = Math.max(0, Math.min(c.maxHp, parseInt(value) || 0));
+            const justDied = newHp === 0 && c.currentHp > 0;
+            return { ...c, currentHp: newHp, dead: newHp === 0, killedBy: justDied ? currentCombatant?.name : c.killedBy };
+          });
+          const aliveEnemies = updated.filter(c => c.type === 'enemy' && !c.dead);
+          const justKilledEnemy = updated.find(c => c.id === id);
+          if (aliveEnemies.length === 0 && justKilledEnemy?.dead && justKilledEnemy?.killedBy) {
+            setHdywtdt(currentCombatant?.name);
+          }
+          return updated;
+        });
+      };
+
+      const sortCombatants = (list) => [...list].sort((a, b) => {
+        if (b.initiative !== a.initiative) return b.initiative - a.initiative;
+        if (a.attachedTo === b.id) return 1;
+        if (b.attachedTo === a.id) return -1;
+        return 0;
+      });
+
+      const nextTurn = () => {
+        const sorted = sortCombatants(combatants);
+        const nextTurnIdx = (currentTurn + 1) % sorted.length;
+        const nextCombatant = sorted[nextTurnIdx];
+        const nextRound = nextTurnIdx === 0 ? currentRound + 1 : currentRound;
+        setCombatants(p => p.map(c => {
+          const newConditions = c.conditions.filter(cond => {
+            if (cond.expiresOnId === nextCombatant.id && cond.expiresAtRound <= nextRound) return false;
+            return true;
+          });
+          return { ...c, conditions: newConditions };
+        }));
+        setCurrentTurn(nextTurnIdx);
+        setCurrentRound(nextRound);
+      };
+
+      const prevTurn = () => {
+        const sorted = sortCombatants(combatants);
+        const prevTurnIdx = (currentTurn - 1 + sorted.length) % sorted.length;
+        const prevRound = currentTurn === 0 ? Math.max(1, currentRound - 1) : currentRound;
+        setCurrentTurn(prevTurnIdx);
+        setCurrentRound(prevRound);
+      };
+
+      const startAddCondition = (combatantId) => {
+        const sorted = sortCombatants(combatants);
+        const currentCombatant = sorted[currentTurn];
+        setAddingCondition({ targetId: combatantId, condition: null, expiresOnId: currentCombatant.id, rounds: 1 });
+      };
+
+      const selectCondition = (condition) => setAddingCondition(p => ({ ...p, condition }));
+
+      const confirmAddCondition = () => {
+        if (!addingCondition.condition) return;
+        const newCondition = { id: Date.now(), name: addingCondition.condition, expiresOnId: addingCondition.expiresOnId, expiresAtRound: currentRound + addingCondition.rounds };
+        setCombatants(p => p.map(c => c.id !== addingCondition.targetId ? c : { ...c, conditions: [...c.conditions, newCondition] }));
+        setAddingCondition(null);
+      };
+
+      const removeCondition = (combatantId, conditionId) => {
+        if (confirmRemoveCondition?.combatantId === combatantId && confirmRemoveCondition?.conditionId === conditionId) {
+          setCombatants(p => p.map(c => c.id !== combatantId ? c : { ...c, conditions: c.conditions.filter(cond => cond.id !== conditionId) }));
+          setConfirmRemoveCondition(null);
+        } else {
+          setConfirmRemoveCondition({ combatantId, conditionId });
+          setTimeout(() => setConfirmRemoveCondition(null), 3000);
+        }
+      };
+
+      const updateDeathSave = (combatantId, type, delta) => {
+        setCombatants(p => p.map(c => {
+          if (c.id !== combatantId) return c;
+          const newSaves = { ...c.deathSaves };
+          newSaves[type] = Math.max(0, Math.min(3, newSaves[type] + delta));
+          return { ...c, deathSaves: newSaves };
+        }));
+      };
+
+      const resetDeathSaves = (combatantId) => {
+        setCombatants(p => p.map(c => c.id !== combatantId ? c : { ...c, deathSaves: { successes: 0, failures: 0 } }));
+        setDeathSaveTarget(null);
+      };
+
+      const startMidCombatAdd = () => setMidCombatAdd({ step: 'type' });
+
+      const selectMidCombatType = (type) => {
+        const sorted = [...combatants].sort((a, b) => b.initiative - a.initiative);
+        const currentCombatant = sorted[currentTurn];
+        const roll = Math.floor(Math.random() * 20) + 1;
+        setMidCombatAdd({ step: 'details', type, name: '', hp: '', cr: '1', initRoll: roll, initMod: 0, initMethod: 'attach', attachTo: currentCombatant?.id, manualInit: '', quantity: 1 });
+      };
+
+      const confirmMidCombatAdd = () => {
+        if (!midCombatAdd.name) return;
+        if (midCombatAdd.type === 'enemy' && !midCombatAdd.hp) return;
+        const attachTarget = combatants.find(c => c.id === midCombatAdd.attachTo);
+        let initiative, attachedTo = null;
+        if (midCombatAdd.initMethod === 'attach') { initiative = attachTarget?.initiative || 0; attachedTo = midCombatAdd.attachTo; }
+        else if (midCombatAdd.initMethod === 'roll') { initiative = midCombatAdd.initRoll + midCombatAdd.initMod; }
+        else { initiative = parseInt(midCombatAdd.manualInit) || 0; }
+
+        const qty = midCombatAdd.type === 'enemy' ? (midCombatAdd.quantity || 1) : 1;
+        const newCombatants = [];
+        for (let i = 0; i < qty; i++) {
+          const rollInit = i === 0 ? initiative : (midCombatAdd.initMethod === 'roll' ? Math.floor(Math.random() * 20) + 1 + midCombatAdd.initMod : initiative);
+          const newC = {
+            id: Date.now() + i, type: midCombatAdd.type, name: qty > 1 ? `${midCombatAdd.name} ${i + 1}` : midCombatAdd.name,
+            initiative: rollInit, attachedTo: i === 0 ? attachedTo : null, conditions: [],
+            ...(midCombatAdd.type === 'enemy' ? { cr: midCombatAdd.cr, xp: crToXp[midCombatAdd.cr] || 0, maxHp: parseInt(midCombatAdd.hp), currentHp: parseInt(midCombatAdd.hp), dead: false } : { deathSaves: { successes: 0, failures: 0 } })
+          };
+          newCombatants.push(newC);
+          if (midCombatAdd.type === 'enemy') setEnemies(p => [...p, { ...newC }]);
+        }
+        setCombatants(p => [...p, ...newCombatants]);
+        setMidCombatAdd(null);
+      };
+
+      const finishCombat = () => {
+        const xpPerPlayer = calculateEncounterXp();
+        const mult = getMultiplier();
+        const gained = Math.floor(xpPerPlayer * mult);
+        if (gained > 0) {
+          setPendingXp(p => p + gained);
+          setPendingLog(p => [...p, { name: `Combat (${enemies.length})`, gained }]);
+        }
+        setEnemies([]); setCombatants([]); setCurrentTurn(0); setCurrentRound(1);
+        setAddingCondition(null); setDeathSaveTarget(null); setEditingInitiative(null); setHdywtdt(null); setMidCombatAdd(null); setShowCombat(false);
+      };
+
+      const cancelCombat = () => {
+        setEnemies([]); setCombatants([]); setCurrentTurn(0); setCurrentRound(1);
+        setAddingEnemy(null); setAddingCondition(null); setDeathSaveTarget(null); setEditingInitiative(null); setHdywtdt(null); setMidCombatAdd(null); setShowCombat(false);
+      };
+
+      // ==================== PARTY MANAGEMENT ====================
+      const finishAddPlayer = (className) => {
+        const newChar = { id: Date.now(), name: addingPlayer.name, origin: addingPlayer.origin, classes: [{ name: className, level: 1, subclass: null }], kia: false, passivePerception: 10, passiveInsight: 10, passiveInvestigation: 10, relevantFeats: [] };
+        setParty(p => [...p, newChar]);
+        setPendingLog(p => [...p, { name: `+ ${addingPlayer.name}`, gained: 0, type: 'operative' }]);
+        setAddingPlayer(null);
+      };
+
+      const markKIA = (charId) => {
+        setParty(p => p.map(c => c.id !== charId ? c : { ...c, kia: true }));
+        const char = party.find(c => c.id === charId);
+        if (char) setPendingLog(p => [...p, { name: `☠ ${char.name} KIA`, gained: 0, type: 'operative' }]);
+        setStatusTimers(p => { const n = {...p}; delete n[charId]; return n; });
+      };
+
+      const reviveCharacter = (charId) => {
+        setParty(p => p.map(c => c.id !== charId ? c : { ...c, kia: false }));
+        const char = party.find(c => c.id === charId);
+        if (char) setPendingLog(p => [...p, { name: `💉 ${char.name} REVIVED`, gained: 0, type: 'operative' }]);
+        setStatusTimers(p => { const n = {...p}; delete n[charId]; return n; });
+      };
+
+      const cycleStatus = (charId, currentKia) => {
+        const currentTimer = statusTimers[charId];
+        if (!currentKia) {
+          if (!currentTimer) { setStatusTimers(p => ({ ...p, [charId]: 'mia' })); setTimeout(() => setStatusTimers(p => p[charId] === 'mia' ? (({ [charId]: _, ...rest }) => rest)(p) : p), 5000); }
+          else if (currentTimer === 'mia') markKIA(charId);
+        } else {
+          if (!currentTimer) { setStatusTimers(p => ({ ...p, [charId]: 'reviving' })); setTimeout(() => setStatusTimers(p => p[charId] === 'reviving' ? (({ [charId]: _, ...rest }) => rest)(p) : p), 5000); }
+          else if (currentTimer === 'reviving') reviveCharacter(charId);
+        }
+      };
+
+      const getStatusDisplay = (char) => {
+        const timer = statusTimers[char.id];
+        if (char.kia) {
+          if (timer === 'reviving') return { text: 'NANOMACHINES, SON!', color: 'text-green-400 border-green-500/50 bg-green-900/30 animate-pulse' };
+          return { text: 'KILLED IN ACTION', color: 'text-red-400 border-red-500/50 bg-red-900/30' };
+        } else {
+          if (timer === 'mia') return { text: 'MISSING IN ACTION', color: 'text-orange-400 border-orange-500/50 bg-orange-900/30 animate-pulse' };
+          return { text: 'STATUS: ACTIVE', color: 'text-cyan-400 border-cyan-500/50 bg-cyan-900/30' };
+        }
+      };
+
+      const startAddPlayer = () => setAddingPlayer({ step: 'name', name: '', origin: null, className: null });
+
+      const levelUpClass = (charId, classIndex) => {
+        const char = party.find(c => c.id === charId);
+        if (!char) return;
+        const classData = char.classes[classIndex];
+        if (classData.level === 2 && !classData.subclass) {
+          setAddingPlayer({ step: 'subclass', charId, charName: char.name, classIndex, className: classData.name });
+          return;
+        }
+        setParty(p => p.map(c => {
+          if (c.id !== charId) return c;
+          const newClasses = [...c.classes];
+          newClasses[classIndex] = { ...newClasses[classIndex], level: newClasses[classIndex].level + 1 };
+          return { ...c, classes: newClasses };
+        }));
+      };
+
+      const assignSubclass = (charId, classIndex, subclass) => {
+        setParty(p => p.map(c => {
+          if (c.id !== charId) return c;
+          const newClasses = [...c.classes];
+          newClasses[classIndex] = { ...newClasses[classIndex], level: newClasses[classIndex].level + 1, subclass };
+          return { ...c, classes: newClasses };
+        }));
+        setAddingPlayer(null);
+      };
+
+      const addMulticlass = (charId, className) => {
+        setParty(p => p.map(c => c.id !== charId ? c : { ...c, classes: [...c.classes, { name: className, level: 1, subclass: null }] }));
+      };
+
+      const startAddMinion = (charId, charName) => setAddingMinion({ charId, charName, name: '', type: null });
+
+      const confirmAddMinion = (type) => {
+        if (!addingMinion.name.trim()) return;
+        const newMinion = { id: Date.now(), name: addingMinion.name, type, followingId: addingMinion.charId, followingName: addingMinion.charName, passivePerception: 10, passiveInsight: 10, passiveInvestigation: 10 };
+        setMinions(p => [...p, newMinion]);
+        setAddingMinion(null);
+      };
+
+      const removeMinion = (minionId) => setMinions(p => p.filter(m => m.id !== minionId));
+
+      const updateCharPassive = (charId, field, value) => {
+        setParty(p => p.map(c => c.id !== charId ? c : { ...c, [field]: parseInt(value) || 10 }));
+      };
+
+      const updateMinionPassive = (minionId, field, value) => {
+        setMinions(p => p.map(m => m.id !== minionId ? m : { ...m, [field]: parseInt(value) || 10 }));
+      };
+
+      const addRelevantFeat = (charId, feat) => {
+        if (!feat.trim()) return;
+        setParty(p => p.map(c => c.id !== charId ? c : { ...c, relevantFeats: [...(c.relevantFeats || []), feat.trim()] }));
+      };
+
+      const removeRelevantFeat = (charId, featIndex) => {
+        setParty(p => p.map(c => c.id !== charId ? c : { ...c, relevantFeats: c.relevantFeats.filter((_, i) => i !== featIndex) }));
+      };
+
+      const deleteCharacter = (charId) => {
+        if (confirmDeleteChar === charId) {
+          setParty(p => p.filter(c => c.id !== charId));
+          setMinions(p => p.filter(m => m.followingId !== charId));
+          setConfirmDeleteChar(null);
+        } else {
+          setConfirmDeleteChar(charId);
+          setTimeout(() => setConfirmDeleteChar(p => p === charId ? null : p), 3000);
+        }
+      };
+
+      // ==================== RENDER ====================
+      const level = getLevel(totalXp);
+      const progress = ((totalXp - getPrevThreshold(totalXp)) / (getNextThreshold(totalXp) - getPrevThreshold(totalXp))) * 100;
+
+      if (!loaded) {
+        return (
+          <div className="h-screen bg-gray-950 flex items-center justify-center">
+            <span className="text-cyan-400 font-mono animate-pulse">LOADING NEURAL LINK...</span>
+          </div>
+        );
+      }
+
+      const sortedCombatants = sortCombatants(combatants);
+
+      return (
+        <div className="h-screen bg-gray-950 text-gray-100 p-2 font-sans flex flex-col" style={{background: 'linear-gradient(180deg, #0a0a0f 0%, #0d1117 50%, #0a0a0f 100%)'}}>
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-cyan-500/30 pb-1 mb-2">
+            {isPlayerMode ? (
+              <>
+                <button onClick={exitPlayerMode} className="px-2 py-1 text-xs font-mono border transition-all bg-gray-800/50 border-gray-600 text-gray-400 hover:border-cyan-500/50">◀ DM MODE</button>
+                <h1 className="text-xl font-bold tracking-widest" style={{textShadow: '0 0 20px rgba(255,0,255,0.5)', color: '#ff00ff'}}>
+                  {playerSetupStep ? 'SETUP' : showPlayerCombat ? 'COMBAT OPS' : playerCharacter?.name || 'OPERATIVE'}
+                </h1>
+                <div className="flex gap-1">
+                  {!playerSetupStep && <button onClick={() => setPlayerSetupStep('select')} className="px-2 py-1 text-xs font-mono border transition-all bg-gray-800/50 border-gray-600 text-gray-400 hover:border-cyan-500/50" title="Switch Character">↔</button>}
+                  {!playerSetupStep && <button onClick={() => { setShowPlayerSheet(true); setShowPlayerCombat(false); }} className={`px-2 py-1 text-xs font-mono border transition-all ${!showPlayerCombat ? 'bg-fuchsia-500/20 border-fuchsia-400 text-fuchsia-300' : 'bg-gray-800/50 border-gray-600 text-gray-400 hover:border-fuchsia-500/50'}`}>SHEET</button>}
+                </div>
+              </>
+            ) : (
+              <>
+                <button onClick={() => { setShowHistory(p => !p); setShowParty(false); setShowCombat(false); setShowShopLoot(false); setConfirmDelete(false); }} className={`px-2 py-1 text-xs font-mono border transition-all ${showHistory ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300' : 'bg-gray-800/50 border-gray-600 text-gray-400 hover:border-cyan-500/50'}`}>
+                  {showHistory ? '◀ BACK' : `HISTORY (${sessionHistory.length})`}
+                </button>
+                <div className="flex items-center gap-2">
+                  <button onClick={togglePlayerMode} className="px-2 py-1 text-xs font-mono border transition-all bg-fuchsia-900/30 border-fuchsia-500/50 text-fuchsia-300 hover:bg-fuchsia-500/20 hover:border-fuchsia-400">PLAYER</button>
+                  <h1 className="text-xl font-bold tracking-widest" style={{textShadow: '0 0 20px rgba(0,255,255,0.5)', color: '#00ffff'}}>
+                    {showHistory ? 'SESSION LOGS' : showParty ? 'PARTY CONFIG' : showCombat ? 'COMBAT' : showShopLoot ? 'REQUISITIONS' : `SESSION ${getSessionWord(getNextSessionNumber())}`}
+                  </h1>
+                </div>
+                <button onClick={() => { setShowParty(p => !p); setShowHistory(false); setShowCombat(false); setShowShopLoot(false); setAddingPlayer(null); }} className={`px-2 py-1 text-xs font-mono border transition-all ${showParty ? 'bg-fuchsia-500/20 border-fuchsia-400 text-fuchsia-300' : 'bg-gray-800/50 border-gray-600 text-gray-400 hover:border-fuchsia-500/50'}`}>
+                  {showParty ? '◀ BACK' : `PARTY (${party.length})`}
+                </button>
+              </>
+            )}
+          </div>
+
+          {isPlayerMode ? (
+            /* ==================== PLAYER MODE ==================== */
+            <div className="flex-1 overflow-auto flex flex-col">
+              {playerSetupStep ? (
+                /* Player Setup Flow */
+                <div className="flex-1 flex flex-col items-center justify-center gap-4">
+                  {playerSetupStep === 'select' && (
+                    <>
+                      <span className="text-fuchsia-400 font-mono text-lg">SELECT YOUR OPERATIVE</span>
+                      {party.length > 0 ? (
+                        <div className="grid grid-cols-2 gap-3 w-full max-w-lg">
+                          {party.filter(c => !c.kia).map(member => (
+                            <button key={member.id} onClick={() => selectPartyMember(member)} className="py-4 px-4 bg-gray-800/50 border-2 border-fuchsia-500/30 text-fuchsia-300 font-mono text-lg hover:bg-fuchsia-500/20 hover:border-fuchsia-400 transition-all text-left">
+                              <div className="text-lg">{member.name}</div>
+                              <div className="text-sm text-gray-500">{member.origin} · {member.classes.map(c => `${c.name} ${c.level}`).join('/')}</div>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-gray-500 font-mono">No party members registered in DM Mode</div>
+                      )}
+                      <div className="flex items-center gap-4 text-gray-500 font-mono text-sm mt-4">
+                        <div className="h-px w-16 bg-gray-700" />
+                        <span>OR</span>
+                        <div className="h-px w-16 bg-gray-700" />
+                      </div>
+                      <button onClick={createStandaloneCharacter} className="px-6 py-3 bg-cyan-900/30 border-2 border-cyan-500/50 text-cyan-300 font-mono hover:bg-cyan-500/20 hover:border-cyan-400 transition-all">CREATE NEW OPERATIVE</button>
+                      <button onClick={exitPlayerMode} className="px-4 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm mt-4">◀ BACK TO DM MODE</button>
+                    </>
+                  )}
+                  {playerSetupStep === 'create' && (
+                    <>
+                      <span className="text-cyan-400 font-mono text-lg">CREATE OPERATIVE</span>
+                      <input type="text" placeholder="Name..." className="bg-gray-900 border border-cyan-500/50 text-cyan-100 px-4 py-2 font-mono text-center text-lg focus:outline-none focus:border-cyan-400 w-64" onKeyDown={(e) => {
+                        if (e.key === 'Enter' && e.target.value.trim()) {
+                          const char = createDefaultPlayerCharacter();
+                          char.name = e.target.value.trim();
+                          setPlayerCharacter(char);
+                          setPlayerSetupStep(null);
+                        }
+                      }} autoFocus />
+                      <button onClick={() => setPlayerSetupStep('select')} className="px-4 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">◀ BACK</button>
+                    </>
+                  )}
+                </div>
+              ) : showPlayerCombat ? (
+                /* Player Combat View */
+                <div className="flex-1 flex flex-col gap-2">
+                  {/* Combat Header */}
+                  <div className="flex gap-2 mb-1">
+                    <button onClick={() => { setShowPlayerCombat(false); setShowPlayerSheet(true); }} className="px-3 py-1 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm hover:border-fuchsia-500/50">◀ SHEET</button>
+                    <div className="flex-1" />
+                    <button onClick={resetActionEconomy} className="px-3 py-1 bg-gray-800/50 border border-orange-500/30 text-orange-300 font-mono text-sm hover:border-orange-400">NEW ROUND</button>
+                  </div>
+
+                  {/* Action Economy */}
+                  <div className="bg-gray-900/50 border border-red-500/30 p-2 rounded">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-red-400 font-mono text-sm">ACTION ECONOMY</span>
+                      <button onClick={resetActionEconomy} className="px-2 py-0.5 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-xs hover:border-red-500/50">RESET</button>
+                    </div>
+                    <div className="flex gap-2">
+                      {ACTION_TYPES.map(action => (
+                        <button key={action} onClick={() => toggleAction(action)} className={`flex-1 py-2 border font-mono text-sm transition-all ${actionEconomy[action] ? 'bg-red-900/30 border-red-500/50 text-red-300' : 'bg-gray-900/50 border-gray-700 text-gray-600 line-through'}`}>{action}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* HP & Damage */}
+                  <div className="bg-gray-900/50 border border-green-500/30 p-2 rounded">
+                    <div className="flex items-center gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-green-400 font-mono text-sm">HP</span>
+                          <span className="text-2xl font-mono font-bold" style={{color: playerCharacter.hp.current <= playerCharacter.hp.max * 0.25 ? '#f87171' : playerCharacter.hp.current <= playerCharacter.hp.max * 0.5 ? '#facc15' : '#4ade80'}}>{playerCharacter.hp.current}</span>
+                          <span className="text-gray-500 font-mono">/ {playerCharacter.hp.max}</span>
+                          {playerCharacter.hp.temp > 0 && <span className="text-cyan-400 font-mono text-sm">+{playerCharacter.hp.temp} temp</span>}
+                        </div>
+                        <div className="h-2 bg-gray-800 rounded overflow-hidden">
+                          <div className="h-full transition-all duration-300" style={{width: `${(playerCharacter.hp.current / playerCharacter.hp.max) * 100}%`, background: playerCharacter.hp.current <= playerCharacter.hp.max * 0.25 ? '#f87171' : playerCharacter.hp.current <= playerCharacter.hp.max * 0.5 ? '#facc15' : '#4ade80'}} />
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <div className="flex gap-1">
+                          <input type="number" value={damageInput} onChange={(e) => setDamageInput(e.target.value)} placeholder="#" className="w-16 bg-gray-800 border border-gray-600 text-gray-300 px-2 py-1 text-center font-mono text-sm" />
+                          <button onClick={() => applyDamage(damageInput)} className="px-3 py-1 bg-red-900/30 border border-red-500/50 text-red-300 font-mono text-sm">DMG</button>
+                          <button onClick={() => applyHealing(damageInput)} className="px-3 py-1 bg-green-900/30 border border-green-500/50 text-green-300 font-mono text-sm">HEAL</button>
+                        </div>
+                        <div className="flex gap-1">
+                          <button onClick={() => updatePlayerHP('temp', (parseInt(damageInput) || 0))} className="flex-1 px-2 py-1 bg-cyan-900/30 border border-cyan-500/50 text-cyan-300 font-mono text-xs">+ TEMP</button>
+                          <button onClick={() => updatePlayerHP('temp', 0)} className="px-2 py-1 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-xs">CLR</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Death Saves (if at 0 HP) */}
+                  {playerCharacter.hp.current === 0 && (
+                    <div className="bg-gray-900/50 border border-red-500/50 p-3 rounded">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-red-400 font-mono">DEATH SAVES</span>
+                        <button onClick={resetPlayerDeathSaves} className="px-2 py-0.5 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-xs">RESET</button>
+                      </div>
+                      <div className="flex gap-8 justify-center">
+                        <div className="flex flex-col items-center gap-2">
+                          <span className="text-green-400 font-mono text-xs">SUCCESSES</span>
+                          <div className="flex gap-1">
+                            {[0,1,2].map(i => (<button key={i} onClick={() => updatePlayerDeathSave('successes', playerCharacter.deathSaves.successes > i ? -1 : 1)} className={`w-8 h-8 rounded-full border-2 transition-all ${playerCharacter.deathSaves.successes > i ? 'bg-green-500 border-green-400' : 'bg-gray-800 border-gray-600'}`} />))}
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-center gap-2">
+                          <span className="text-red-400 font-mono text-xs">FAILURES</span>
+                          <div className="flex gap-1">
+                            {[0,1,2].map(i => (<button key={i} onClick={() => updatePlayerDeathSave('failures', playerCharacter.deathSaves.failures > i ? -1 : 1)} className={`w-8 h-8 rounded-full border-2 transition-all ${playerCharacter.deathSaves.failures > i ? 'bg-red-500 border-red-400' : 'bg-gray-800 border-gray-600'}`} />))}
+                          </div>
+                        </div>
+                      </div>
+                      {playerCharacter.deathSaves.successes >= 3 && <div className="text-center text-green-400 font-mono mt-2 animate-pulse">STABILIZED</div>}
+                      {playerCharacter.deathSaves.failures >= 3 && <div className="text-center text-red-400 font-mono mt-2 animate-pulse">FLATLINED</div>}
+                    </div>
+                  )}
+
+                  {/* Concentration */}
+                  <div className="bg-gray-900/50 border border-yellow-500/30 p-2 rounded">
+                    <div className="flex items-center justify-between">
+                      <span className="text-yellow-400 font-mono text-sm">CONCENTRATION</span>
+                      {playerConcentration ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-yellow-300 font-mono">{playerConcentration}</span>
+                          <button onClick={() => setPlayerConcentration(null)} className="px-2 py-0.5 bg-red-900/30 border border-red-500/50 text-red-300 font-mono text-xs">DROP</button>
+                        </div>
+                      ) : (
+                        <input type="text" placeholder="Spell name..." className="bg-gray-800 border border-yellow-500/30 text-yellow-300 px-2 py-1 font-mono text-sm w-48" onKeyDown={(e) => { if (e.key === 'Enter' && e.target.value.trim()) { setPlayerConcentration(e.target.value.trim()); e.target.value = ''; } }} />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Spell Slots */}
+                  {Object.keys(playerCharacter.spellSlots).length > 0 && (
+                    <div className="bg-gray-900/50 border border-purple-500/30 p-2 rounded">
+                      <span className="text-purple-400 font-mono text-sm block mb-2">SPELL SLOTS</span>
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(playerCharacter.spellSlots).map(([level, slot]) => (
+                          <div key={level} className="flex items-center gap-1 bg-gray-800/50 px-2 py-1 rounded">
+                            <span className="text-purple-300 font-mono text-sm">{level}:</span>
+                            <div className="flex gap-0.5">
+                              {Array.from({ length: slot.max }).map((_, i) => (
+                                <button key={i} onClick={() => i < slot.max - slot.used ? useSpellSlot(level) : restoreSpellSlot(level)} className={`w-4 h-4 rounded-sm border transition-all ${i < slot.max - slot.used ? 'bg-purple-500 border-purple-400' : 'bg-gray-700 border-gray-600'}`} />
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Class Resources */}
+                  {playerCharacter.resources.length > 0 && (
+                    <div className="bg-gray-900/50 border border-orange-500/30 p-2 rounded">
+                      <span className="text-orange-400 font-mono text-sm block mb-2">RESOURCES</span>
+                      <div className="flex flex-wrap gap-2">
+                        {playerCharacter.resources.map((res, i) => (
+                          <div key={i} className="flex items-center gap-1 bg-gray-800/50 px-2 py-1 rounded">
+                            <span className="text-orange-300 font-mono text-sm">{res.name}:</span>
+                            <div className="flex gap-0.5">
+                              {Array.from({ length: res.max }).map((_, j) => (
+                                <button key={j} onClick={() => j < res.max - res.used ? useResource(i) : restoreResource(i)} className={`w-4 h-4 rounded-sm border transition-all ${j < res.max - res.used ? 'bg-orange-500 border-orange-400' : 'bg-gray-700 border-gray-600'}`} />
+                              ))}
+                            </div>
+                            {res.shortRest && <span className="text-gray-500 text-xs ml-1">(SR)</span>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Quick Stats */}
+                  <div className="flex gap-2 mt-auto">
+                    <div className="flex-1 bg-gray-900/50 border border-cyan-500/30 p-2 rounded text-center">
+                      <div className="text-gray-500 font-mono text-xs">AC</div>
+                      <div className="text-cyan-300 font-mono text-xl">{playerCharacter.ac}</div>
+                    </div>
+                    <div className="flex-1 bg-gray-900/50 border border-cyan-500/30 p-2 rounded text-center">
+                      <div className="text-gray-500 font-mono text-xs">INIT</div>
+                      <div className="text-cyan-300 font-mono text-xl">{formatMod(playerCharacter.initiative)}</div>
+                    </div>
+                    <div className="flex-1 bg-gray-900/50 border border-cyan-500/30 p-2 rounded text-center">
+                      <div className="text-gray-500 font-mono text-xs">SPEED</div>
+                      <div className="text-cyan-300 font-mono text-xl">{playerCharacter.speed}</div>
+                    </div>
+                    <div className="flex-1 bg-gray-900/50 border border-cyan-500/30 p-2 rounded text-center">
+                      <div className="text-gray-500 font-mono text-xs">PROF</div>
+                      <div className="text-cyan-300 font-mono text-xl">+{playerCharacter.proficiencyBonus}</div>
+                    </div>
+                  </div>
+
+                  {/* Rest Buttons */}
+                  <div className="flex gap-2">
+                    <button onClick={shortRest} className="flex-1 py-2 bg-cyan-900/30 border border-cyan-500/50 text-cyan-300 font-mono text-sm hover:bg-cyan-500/20">SHORT REST</button>
+                    <button onClick={longRest} className="flex-1 py-2 bg-fuchsia-900/30 border border-fuchsia-500/50 text-fuchsia-300 font-mono text-sm hover:bg-fuchsia-500/20">LONG REST</button>
+                  </div>
+                </div>
+              ) : (
+                /* Player Character Sheet */
+                <div className="flex-1 flex flex-col gap-2 overflow-auto hide-scrollbar">
+                  {/* Character Header */}
+                  <div className="bg-gray-900/50 border border-fuchsia-500/30 p-3 rounded">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div className="text-xl font-bold text-fuchsia-300">{playerCharacter.name}</div>
+                        <div className="text-sm font-mono text-gray-400">
+                          Lvl {getPlayerLevel()} {playerCharacter.origin} · {playerCharacter.classes.map(c => `${c.name} ${c.level}${c.subclass ? ` (${c.subclass})` : ''}`).join(' / ')}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-mono text-gray-500">PROFICIENCY</div>
+                        <input type="number" value={playerCharacter.proficiencyBonus} onChange={(e) => setPlayerCharacter(p => ({ ...p, proficiencyBonus: parseInt(e.target.value) || 2 }))} className="w-12 bg-gray-800 border border-fuchsia-500/30 text-fuchsia-300 px-2 py-1 text-center font-mono text-lg" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Ability Scores */}
+                  <div className="grid grid-cols-6 gap-2">
+                    {ABILITIES.map(ability => {
+                      const score = playerCharacter.abilities[ability];
+                      const mod = getAbilityMod(score);
+                      return (
+                        <div key={ability} className="bg-gray-900/50 border border-cyan-500/30 p-2 rounded text-center">
+                          <div className="text-cyan-400 font-mono text-xs mb-1">{ability}</div>
+                          {editingAbility === ability ? (
+                            <input type="number" value={score} onChange={(e) => updatePlayerAbility(ability, e.target.value)} onBlur={() => setEditingAbility(null)} onKeyDown={(e) => e.key === 'Enter' && setEditingAbility(null)} className="w-12 bg-gray-800 border border-cyan-400 text-cyan-300 px-1 py-0.5 text-center font-mono text-lg mx-auto" autoFocus />
+                          ) : (
+                            <button onClick={() => setEditingAbility(ability)} className="text-cyan-300 font-mono text-lg hover:text-cyan-100">{score}</button>
+                          )}
+                          <div className="text-fuchsia-400 font-mono text-sm font-bold">{formatMod(mod)}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Combat Stats Row */}
+                  <div className="grid grid-cols-4 gap-2">
+                    <div className="bg-gray-900/50 border border-green-500/30 p-2 rounded">
+                      <div className="text-green-400 font-mono text-xs text-center mb-1">HIT POINTS</div>
+                      <div className="flex items-center justify-center gap-1">
+                        <input type="number" value={playerCharacter.hp.current} onChange={(e) => updatePlayerHP('current', e.target.value)} className="w-12 bg-gray-800 border border-green-500/30 text-green-300 px-1 py-0.5 text-center font-mono text-lg" />
+                        <span className="text-gray-500">/</span>
+                        <input type="number" value={playerCharacter.hp.max} onChange={(e) => updatePlayerHP('max', e.target.value)} className="w-12 bg-gray-800 border border-green-500/30 text-green-300 px-1 py-0.5 text-center font-mono text-lg" />
+                      </div>
+                      <div className="flex items-center justify-center gap-1 mt-1">
+                        <span className="text-cyan-500 font-mono text-xs">TEMP:</span>
+                        <input type="number" value={playerCharacter.hp.temp} onChange={(e) => updatePlayerHP('temp', e.target.value)} className="w-10 bg-gray-800 border border-cyan-500/30 text-cyan-300 px-1 py-0.5 text-center font-mono text-sm" />
+                      </div>
+                    </div>
+                    <div className="bg-gray-900/50 border border-cyan-500/30 p-2 rounded text-center">
+                      <div className="text-cyan-400 font-mono text-xs mb-1">ARMOR CLASS</div>
+                      <input type="number" value={playerCharacter.ac} onChange={(e) => setPlayerCharacter(p => ({ ...p, ac: parseInt(e.target.value) || 10 }))} className="w-12 bg-gray-800 border border-cyan-500/30 text-cyan-300 px-1 py-0.5 text-center font-mono text-xl mx-auto" />
+                    </div>
+                    <div className="bg-gray-900/50 border border-cyan-500/30 p-2 rounded text-center">
+                      <div className="text-cyan-400 font-mono text-xs mb-1">INITIATIVE</div>
+                      <input type="number" value={playerCharacter.initiative} onChange={(e) => setPlayerCharacter(p => ({ ...p, initiative: parseInt(e.target.value) || 0 }))} className="w-12 bg-gray-800 border border-cyan-500/30 text-cyan-300 px-1 py-0.5 text-center font-mono text-xl mx-auto" />
+                    </div>
+                    <div className="bg-gray-900/50 border border-cyan-500/30 p-2 rounded text-center">
+                      <div className="text-cyan-400 font-mono text-xs mb-1">SPEED</div>
+                      <input type="number" value={playerCharacter.speed} onChange={(e) => setPlayerCharacter(p => ({ ...p, speed: parseInt(e.target.value) || 30 }))} className="w-12 bg-gray-800 border border-cyan-500/30 text-cyan-300 px-1 py-0.5 text-center font-mono text-xl mx-auto" />
+                    </div>
+                  </div>
+
+                  {/* Spell Slots */}
+                  {Object.keys(playerCharacter.spellSlots).length > 0 && (
+                    <div className="bg-gray-900/50 border border-purple-500/30 p-2 rounded">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-purple-400 font-mono text-sm">SPELL SLOTS</span>
+                        <span className="text-gray-500 font-mono text-xs">(click to toggle)</span>
+                      </div>
+                      <div className="flex flex-wrap gap-3">
+                        {Object.entries(playerCharacter.spellSlots).map(([level, slot]) => (
+                          <div key={level} className="flex items-center gap-2">
+                            <span className="text-purple-300 font-mono">Lvl {level}:</span>
+                            <div className="flex gap-1">
+                              {Array.from({ length: slot.max }).map((_, i) => (
+                                <button key={i} onClick={() => i < slot.max - slot.used ? useSpellSlot(level) : restoreSpellSlot(level)} className={`w-5 h-5 rounded-full border-2 transition-all ${i < slot.max - slot.used ? 'bg-purple-500 border-purple-400' : 'bg-gray-700 border-gray-600'}`} />
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Class Resources */}
+                  <div className="bg-gray-900/50 border border-orange-500/30 p-2 rounded">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-orange-400 font-mono text-sm">CLASS RESOURCES</span>
+                      <button onClick={() => setAddingResource(true)} className="px-2 py-0.5 bg-gray-800/50 border border-orange-500/30 text-orange-300 font-mono text-xs hover:border-orange-400">+ ADD</button>
+                    </div>
+                    {addingResource ? (
+                      <div className="flex gap-2 items-center mb-2">
+                        <input type="text" id="newResName" placeholder="Name" className="flex-1 bg-gray-800 border border-orange-500/30 text-orange-300 px-2 py-1 font-mono text-sm" autoFocus />
+                        <input type="number" id="newResMax" placeholder="Max" className="w-16 bg-gray-800 border border-orange-500/30 text-orange-300 px-2 py-1 font-mono text-sm text-center" defaultValue="1" />
+                        <label className="flex items-center gap-1 text-gray-400 font-mono text-xs"><input type="checkbox" id="newResSR" /> SR</label>
+                        <button onClick={() => { const name = document.getElementById('newResName').value; const max = document.getElementById('newResMax').value; const sr = document.getElementById('newResSR').checked; if (name.trim()) addResource(name.trim(), max, sr); }} className="px-2 py-1 bg-orange-500/20 border border-orange-400 text-orange-300 font-mono text-xs">ADD</button>
+                        <button onClick={() => setAddingResource(false)} className="px-2 py-1 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-xs">×</button>
+                      </div>
+                    ) : null}
+                    {playerCharacter.resources.length === 0 && !addingResource ? (
+                      <div className="text-gray-500 font-mono text-sm">No resources configured</div>
+                    ) : (
+                      <div className="flex flex-wrap gap-3">
+                        {playerCharacter.resources.map((res, i) => (
+                          <div key={i} className="flex items-center gap-2 bg-gray-800/30 px-2 py-1 rounded">
+                            <span className="text-orange-300 font-mono text-sm">{res.name}:</span>
+                            <div className="flex gap-1">
+                              {Array.from({ length: res.max }).map((_, j) => (
+                                <button key={j} onClick={() => j < res.max - res.used ? useResource(i) : restoreResource(i)} className={`w-4 h-4 rounded-sm border transition-all ${j < res.max - res.used ? 'bg-orange-500 border-orange-400' : 'bg-gray-700 border-gray-600'}`} />
+                              ))}
+                            </div>
+                            {res.shortRest && <span className="text-gray-500 text-xs">(SR)</span>}
+                            <button onClick={() => removeResource(i)} className="text-gray-600 hover:text-red-400 text-xs">×</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Features & Abilities */}
+                  <div className="bg-gray-900/50 border border-yellow-500/30 p-2 rounded flex-1">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-yellow-400 font-mono text-sm">FEATURES & ABILITIES</span>
+                      <button onClick={() => setAddingFeature(true)} className="px-2 py-0.5 bg-gray-800/50 border border-yellow-500/30 text-yellow-300 font-mono text-xs hover:border-yellow-400">+ ADD</button>
+                    </div>
+                    {addingFeature && (
+                      <div className="flex gap-2 mb-2">
+                        <input type="text" id="newFeatName" placeholder="Feature name" className="flex-1 bg-gray-800 border border-yellow-500/30 text-yellow-300 px-2 py-1 font-mono text-sm" autoFocus />
+                        <button onClick={() => { const name = document.getElementById('newFeatName').value; if (name.trim()) addFeature(name.trim(), ''); }} className="px-2 py-1 bg-yellow-500/20 border border-yellow-400 text-yellow-300 font-mono text-xs">ADD</button>
+                        <button onClick={() => setAddingFeature(false)} className="px-2 py-1 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-xs">×</button>
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-1">
+                      {playerCharacter.features.map((feat, i) => (
+                        <button key={i} onClick={() => removeFeature(i)} className="px-2 py-0.5 bg-yellow-900/30 border border-yellow-600/50 text-yellow-300 font-mono text-xs hover:border-red-400 hover:text-red-300" title="Click to remove">{feat.name}</button>
+                      ))}
+                      {playerCharacter.features.length === 0 && !addingFeature && <span className="text-gray-500 font-mono text-sm">No features added</span>}
+                    </div>
+                  </div>
+
+                  {/* Proficiencies & Languages */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-gray-900/50 border border-gray-600 p-2 rounded">
+                      <div className="text-gray-400 font-mono text-xs mb-1">PROFICIENCIES</div>
+                      <textarea value={playerCharacter.proficiencies} onChange={(e) => setPlayerCharacter(p => ({ ...p, proficiencies: e.target.value }))} className="w-full bg-transparent text-gray-300 font-mono text-sm resize-none h-16" placeholder="Armor, weapons, tools..."></textarea>
+                    </div>
+                    <div className="bg-gray-900/50 border border-gray-600 p-2 rounded">
+                      <div className="text-gray-400 font-mono text-xs mb-1">LANGUAGES</div>
+                      <textarea value={playerCharacter.languages} onChange={(e) => setPlayerCharacter(p => ({ ...p, languages: e.target.value }))} className="w-full bg-transparent text-gray-300 font-mono text-sm resize-none h-16" placeholder="Common, Elvish..."></textarea>
+                    </div>
+                  </div>
+
+                  {/* Bottom Actions */}
+                  <div className="flex gap-2">
+                    <button onClick={() => { setShowPlayerCombat(true); setShowPlayerSheet(false); }} className="flex-1 py-2 bg-red-900/30 border border-red-500/50 text-red-300 font-mono text-sm hover:bg-red-500/20 hover:border-red-400 transition-all">⚔ COMBAT MODE</button>
+                    <button onClick={shortRest} className="flex-1 py-2 bg-cyan-900/30 border border-cyan-500/50 text-cyan-300 font-mono text-sm hover:bg-cyan-500/20">SHORT REST</button>
+                    <button onClick={longRest} className="flex-1 py-2 bg-fuchsia-900/30 border border-fuchsia-500/50 text-fuchsia-300 font-mono text-sm hover:bg-fuchsia-500/20">LONG REST</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : showShopLoot ? (
+            <div className="flex-1 overflow-auto flex flex-col">
+              {shopResults !== null ? (
+                <div className="flex-1 flex flex-col">
+                  <div className="text-center mb-2">
+                    <span className="text-lg font-mono" style={{color: SHOP_TYPES.find(s => s.id === selectedShopType)?.color === 'cyan' ? '#00ffff' : SHOP_TYPES.find(s => s.id === selectedShopType)?.color === 'red' ? '#f87171' : SHOP_TYPES.find(s => s.id === selectedShopType)?.color === 'green' ? '#4ade80' : '#e879f9'}}>
+                      {SHOP_TYPES.find(s => s.id === selectedShopType)?.name}
+                    </span>
+                  </div>
+                  {shopResults.length === 0 ? (
+                    <div className="text-center text-gray-500 font-mono py-8">NO ITEMS IN DATABASE FOR THIS SHOP TYPE</div>
+                  ) : (
+                    <div className="flex-1 grid grid-cols-5 grid-rows-3 gap-2">
+                      {shopResults.map((item, i) => (
+                        <div key={i} className="bg-gray-900/50 border border-cyan-500/20 p-2 rounded flex flex-col justify-between">
+                          <div>
+                            <div className="text-cyan-100 font-mono text-sm leading-tight">{item.name}</div>
+                            <div className="text-gray-500 text-xs">{item.rarity}</div>
+                          </div>
+                          <div className="text-yellow-300 font-mono text-sm mt-1">${item.rolledPrice}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-2 mt-2">
+                    <button onClick={() => setShopResults(rollShopInventory(selectedShopType))} className="flex-1 py-2 bg-cyan-900/30 border border-cyan-500/50 text-cyan-300 font-mono text-sm hover:bg-cyan-500/20">⟳ REROLL</button>
+                    <button onClick={() => { resetShopLoot(); setShowShopLoot(false); }} className="flex-1 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm hover:border-cyan-500/50">◀ DONE</button>
+                  </div>
+                </div>
+              ) : lootResults !== null ? (
+                <div className="flex-1 flex flex-col">
+                  <div className="text-center mb-2">
+                    <span className="text-lg font-mono" style={{color: LOOT_TYPES.find(l => l.id === selectedLootType)?.color === 'gray' ? '#9ca3af' : LOOT_TYPES.find(l => l.id === selectedLootType)?.color === 'yellow' ? '#facc15' : LOOT_TYPES.find(l => l.id === selectedLootType)?.color === 'orange' ? '#fb923c' : '#c084fc'}}>
+                      {LOOT_TYPES.find(l => l.id === selectedLootType)?.name} Loot ({CR_BRACKETS.find(c => c.id === selectedCR)?.name})
+                    </span>
+                  </div>
+                  <div className="bg-gray-900/50 border border-yellow-500/30 p-3 rounded mb-2">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-yellow-400 font-mono text-sm">CURRENCY</span>
+                      <span className="text-yellow-300 font-mono text-2xl">${lootResults.total}</span>
+                    </div>
+                    {Object.keys(lootResults.coins).length > 0 && (
+                      <div className="flex flex-wrap gap-3 text-sm font-mono">
+                        {lootResults.coins.pp && <span className="text-purple-300">{lootResults.coins.pp} pp <span className="text-gray-500">= ${(lootResults.coins.pp * 10).toFixed(2)}</span></span>}
+                        {lootResults.coins.gp && <span className="text-yellow-300">{lootResults.coins.gp} gp <span className="text-gray-500">= ${lootResults.coins.gp.toFixed(2)}</span></span>}
+                        {lootResults.coins.ep && <span className="text-gray-300">{lootResults.coins.ep} ep <span className="text-gray-500">= ${(lootResults.coins.ep * 0.5).toFixed(2)}</span></span>}
+                        {lootResults.coins.sp && <span className="text-gray-400">{lootResults.coins.sp} sp <span className="text-gray-500">= ${(lootResults.coins.sp * 0.1).toFixed(2)}</span></span>}
+                        {lootResults.coins.cp && <span className="text-orange-300">{lootResults.coins.cp} cp <span className="text-gray-500">= ${(lootResults.coins.cp * 0.01).toFixed(2)}</span></span>}
+                      </div>
+                    )}
+                  </div>
+                  {lootResults.items.length === 0 ? (
+                    <div className="flex-1 flex items-center justify-center text-gray-500 font-mono">NO ITEMS FOUND</div>
+                  ) : (
+                    <div className="flex-1 grid grid-cols-5 grid-rows-3 gap-2">
+                      {lootResults.items.map((item, i) => (
+                        <div key={i} className="bg-gray-900/50 border border-amber-500/20 p-2 rounded flex flex-col justify-between">
+                          <div>
+                            <div className="text-amber-100 font-mono text-sm leading-tight">{item.name}</div>
+                            <div className="text-gray-500 text-xs">{item.rarity}</div>
+                          </div>
+                          <div className="text-yellow-300 font-mono text-sm mt-1">${item.rolledPrice}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-2 mt-2">
+                    <button onClick={() => confirmLootRoll(selectedCR)} className="flex-1 py-2 bg-amber-900/30 border border-amber-500/50 text-amber-300 font-mono text-sm hover:bg-amber-500/20">⟳ REROLL</button>
+                    <button onClick={() => { resetShopLoot(); setShowShopLoot(false); }} className="flex-1 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm hover:border-cyan-500/50">◀ DONE</button>
+                  </div>
+                </div>
+              ) : shopLootMode === null ? (
+                <div className="flex-1 flex flex-col items-center justify-center gap-6">
+                  <div className="grid grid-cols-2 gap-4 w-full max-w-md">
+                    <button onClick={() => setShopLootMode('shops')} className="py-8 bg-green-900/20 border-2 border-green-500/50 text-green-300 font-mono text-xl hover:bg-green-500/20 hover:border-green-400 transition-all hover:shadow-[0_0_20px_rgba(0,255,0,0.2)]">
+                      🏪 SHOPS
+                    </button>
+                    <button onClick={() => setShopLootMode('loot')} className="py-8 bg-amber-900/20 border-2 border-amber-500/50 text-amber-300 font-mono text-xl hover:bg-amber-500/20 hover:border-amber-400 transition-all hover:shadow-[0_0_20px_rgba(255,200,0,0.2)]">
+                      💰 LOOT
+                    </button>
+                  </div>
+                  <button onClick={() => { resetShopLoot(); setShowShopLoot(false); }} className="px-4 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">◀ BACK TO MAIN</button>
+                </div>
+              ) : shopLootMode === 'shops' ? (
+                <div className="flex-1 flex flex-col items-center justify-center gap-4">
+                  <span className="text-green-400 font-mono text-sm">SELECT SHOP TYPE</span>
+                  <div className="grid grid-cols-2 gap-3 w-full max-w-md">
+                    {SHOP_TYPES.map(shop => (
+                      <button key={shop.id} onClick={() => selectShopType(shop.id)} className={`py-6 bg-gray-800/50 border-2 font-mono text-lg transition-all hover:shadow-[0_0_15px_rgba(0,255,255,0.2)] ${shop.color === 'cyan' ? 'border-cyan-500/50 text-cyan-300 hover:bg-cyan-500/20 hover:border-cyan-400' : shop.color === 'red' ? 'border-red-500/50 text-red-300 hover:bg-red-500/20 hover:border-red-400' : shop.color === 'green' ? 'border-green-500/50 text-green-300 hover:bg-green-500/20 hover:border-green-400' : 'border-fuchsia-500/50 text-fuchsia-300 hover:bg-fuchsia-500/20 hover:border-fuchsia-400'}`}>
+                        {shop.name}
+                      </button>
+                    ))}
+                  </div>
+                  <button onClick={() => setShopLootMode(null)} className="px-4 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">◀ BACK</button>
+                </div>
+              ) : (
+                selectedLootType === null ? (
+                  <div className="flex-1 flex flex-col items-center justify-center gap-4">
+                    <span className="text-amber-400 font-mono text-sm">SELECT ENEMY TYPE</span>
+                    <div className="grid grid-cols-2 gap-3 w-full max-w-md">
+                      {LOOT_TYPES.map(loot => (
+                        <button key={loot.id} onClick={() => setSelectedLootType(loot.id)} className={`py-6 bg-gray-800/50 border-2 font-mono text-lg transition-all ${loot.color === 'gray' ? 'border-gray-500/50 text-gray-300 hover:bg-gray-500/20 hover:border-gray-400' : loot.color === 'yellow' ? 'border-yellow-500/50 text-yellow-300 hover:bg-yellow-500/20 hover:border-yellow-400' : loot.color === 'orange' ? 'border-orange-500/50 text-orange-300 hover:bg-orange-500/20 hover:border-orange-400' : 'border-purple-500/50 text-purple-300 hover:bg-purple-500/20 hover:border-purple-400'}`}>
+                          {loot.name}
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={() => setShopLootMode(null)} className="px-4 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">◀ BACK</button>
+                  </div>
+                ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center gap-4">
+                    <span className="text-amber-400 font-mono text-sm">SELECT CR BRACKET</span>
+                    <span className="text-gray-500 font-mono text-xs">{LOOT_TYPES.find(l => l.id === selectedLootType)?.name}</span>
+                    <div className="grid grid-cols-2 gap-3 w-full max-w-md">
+                      {CR_BRACKETS.map(cr => (
+                        <button key={cr.id} onClick={() => { setSelectedCR(cr.id); confirmLootRoll(cr.id); }} className="py-6 bg-gray-800/50 border-2 border-amber-500/50 text-amber-300 font-mono text-lg transition-all hover:bg-amber-500/20 hover:border-amber-400">
+                          {cr.name}
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={() => setSelectedLootType(null)} className="px-4 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">◀ BACK</button>
+                  </div>
+                )
+              )}
+            </div>
+          ) : showHistory ? (
+            <div className="flex-1 overflow-auto flex flex-col">
+              <div className="flex gap-2 mb-2">
+                <button onClick={exportData} className="flex-1 py-1 px-2 bg-gray-800/50 border border-cyan-500/30 text-cyan-300 font-mono text-xs hover:bg-cyan-500/20 hover:border-cyan-400 transition-all">EXPORT</button>
+                <label className="flex-1 py-1 px-2 bg-gray-800/50 border border-orange-500/30 text-orange-300 font-mono text-xs hover:bg-orange-500/20 hover:border-orange-400 transition-all cursor-pointer text-center">
+                  IMPORT<input type="file" accept=".json" onChange={importData} className="hidden" />
+                </label>
+                <button onClick={deleteAllHistory} onBlur={() => setConfirmDelete(false)} className={`flex-1 py-1 px-2 border font-mono text-xs transition-all ${confirmDelete ? 'bg-red-500/30 border-red-400 text-red-200 animate-pulse' : 'bg-gray-800/50 border-red-500/30 text-red-400 hover:bg-red-500/20 hover:border-red-400'}`}>
+                  {confirmDelete ? 'CONFIRM?' : 'DELETE ALL'}
+                </button>
+              </div>
+              {sessionHistory.length === 0 ? (
+                <div className="text-center text-gray-500 font-mono mt-8">NO SESSIONS LOGGED</div>
+              ) : (
+                <div className="space-y-2">
+                  {[...sessionHistory].reverse().map((session) => (
+                    <div key={session.number} className="bg-gray-900/50 border border-cyan-500/20 p-3 rounded">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-cyan-400 font-mono font-bold">SESSION {session.number}</span>
+                        <span className="text-gray-500 text-xs">{session.date}</span>
+                      </div>
+                      <div className="flex justify-between items-center mb-2 text-sm">
+                        <span className="text-fuchsia-300 font-mono">+{session.xpGained.toLocaleString()} XP</span>
+                        {session.leveledUp && <span className="text-yellow-300 font-bold text-xs">LEVEL UP! {session.levelBefore} → {session.levelAfter}</span>}
+                        <span className="text-gray-400 font-mono text-xs">Total: {session.xpTotal.toLocaleString()}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {session.log.map((entry, i) => (
+                          <span key={i} className={`px-2 py-0.5 border text-xs font-mono rounded ${entry.type === 'operative' ? entry.name.startsWith('☠') ? 'bg-red-900/30 border-red-700 text-red-400' : entry.name.startsWith('💉') ? 'bg-blue-900/30 border-blue-700 text-blue-400' : 'bg-green-900/30 border-green-700 text-green-400' : 'bg-gray-800/50 border-gray-700 text-gray-400'}`}>
+                            {entry.type === 'operative' ? entry.name : `${entry.name} +${entry.gained}`}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : showParty ? (
+            <div className="flex-1 overflow-hidden flex flex-col">
+              {addingMinion ? (
+                <div className="flex-1 flex flex-col items-center justify-center gap-4">
+                  <span className="text-purple-400 font-mono text-sm">ADD COMPANION FOR: {addingMinion.charName}</span>
+                  <input type="text" value={addingMinion.name} onChange={(e) => setAddingMinion(p => ({ ...p, name: e.target.value }))} className="bg-gray-900 border border-purple-500/50 text-purple-100 px-4 py-2 font-mono text-center text-lg focus:outline-none focus:border-purple-400" placeholder="Name..." autoFocus />
+                  <div className="flex gap-2">
+                    {MINION_TYPES.map(type => (
+                      <button key={type} onClick={() => confirmAddMinion(type)} disabled={!addingMinion.name.trim()} className="px-4 py-3 bg-gray-800/50 border border-purple-500/30 text-purple-300 font-mono text-sm hover:bg-purple-500/20 hover:border-purple-400 transition-all disabled:opacity-50">{type}</button>
+                    ))}
+                  </div>
+                  <button onClick={() => setAddingMinion(null)} className="px-4 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">CANCEL</button>
+                </div>
+              ) : addingFeat ? (
+                <div className="flex-1 flex flex-col items-center justify-center gap-4">
+                  <span className="text-yellow-400 font-mono text-sm">ADD NOTE FOR: {addingFeat.charName}</span>
+                  <input type="text" value={addingFeat.feat} onChange={(e) => setAddingFeat(p => ({ ...p, feat: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter' && addingFeat.feat.trim()) { addRelevantFeat(addingFeat.charId, addingFeat.feat); setAddingFeat(null); } if (e.key === 'Escape') setAddingFeat(null); }} className="bg-gray-900 border border-yellow-500/50 text-yellow-100 px-4 py-2 font-mono text-center text-lg focus:outline-none focus:border-yellow-400 w-64" placeholder="Alert, Observant, etc..." autoFocus />
+                  <div className="flex gap-2">
+                    <button onClick={() => setAddingFeat(null)} className="px-4 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">CANCEL</button>
+                    <button onClick={() => { addRelevantFeat(addingFeat.charId, addingFeat.feat); setAddingFeat(null); }} disabled={!addingFeat.feat.trim()} className="px-4 py-2 bg-yellow-500/20 border border-yellow-400 text-yellow-300 font-mono text-sm disabled:opacity-50">ADD</button>
+                  </div>
+                </div>
+              ) : addingPlayer ? (
+                <div className="flex-1 flex flex-col">
+                  {addingPlayer.step === 'name' && (
+                    <div className="flex flex-col items-center justify-center flex-1 gap-4">
+                      <span className="text-cyan-400 font-mono text-sm">ENTER OPERATIVE NAME</span>
+                      <input type="text" value={addingPlayer.name} onChange={(e) => setAddingPlayer(p => ({ ...p, name: e.target.value }))} onKeyDown={(e) => e.key === 'Enter' && addingPlayer.name.trim() && setAddingPlayer(p => ({ ...p, step: 'origin' }))} className="bg-gray-900 border border-cyan-500/50 text-cyan-100 px-4 py-2 font-mono text-center text-lg focus:outline-none focus:border-cyan-400" placeholder="Name..." autoFocus />
+                      <div className="flex gap-2">
+                        <button onClick={() => setAddingPlayer(null)} className="px-4 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">CANCEL</button>
+                        <button onClick={() => addingPlayer.name.trim() && setAddingPlayer(p => ({ ...p, step: 'origin' }))} disabled={!addingPlayer.name.trim()} className="px-4 py-2 bg-cyan-500/20 border border-cyan-400 text-cyan-300 font-mono text-sm disabled:opacity-50">NEXT</button>
+                      </div>
+                    </div>
+                  )}
+                  {addingPlayer.step === 'origin' && (
+                    <div className="flex flex-col items-center justify-center flex-1 gap-4">
+                      <span className="text-cyan-400 font-mono text-sm">SELECT ORIGIN: {addingPlayer.name}</span>
+                      <div className="grid grid-cols-4 gap-2 w-full max-w-lg">
+                        {ORIGINS.map(origin => (
+                          <button key={origin} onClick={() => setAddingPlayer(p => ({ ...p, origin, step: 'class' }))} className="py-3 bg-gray-800/50 border border-fuchsia-500/30 text-fuchsia-300 font-mono text-sm hover:bg-fuchsia-500/20 hover:border-fuchsia-400 transition-all">{origin}</button>
+                        ))}
+                      </div>
+                      <button onClick={() => setAddingPlayer(p => ({ ...p, step: 'name' }))} className="px-4 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">◀ BACK</button>
+                    </div>
+                  )}
+                  {addingPlayer.step === 'class' && (
+                    <div className="flex flex-col items-center justify-center flex-1 gap-4">
+                      <span className="text-cyan-400 font-mono text-sm">SELECT CLASS: {addingPlayer.name} ({addingPlayer.origin})</span>
+                      <div className="grid grid-cols-4 gap-2 w-full max-w-lg">
+                        {CLASSES.map(cls => (
+                          <button key={cls} onClick={() => finishAddPlayer(cls)} className="py-3 bg-gray-800/50 border border-cyan-500/30 text-cyan-300 font-mono text-sm hover:bg-cyan-500/20 hover:border-cyan-400 transition-all">{cls}</button>
+                        ))}
+                      </div>
+                      <button onClick={() => setAddingPlayer(p => ({ ...p, step: 'origin' }))} className="px-4 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">◀ BACK</button>
+                    </div>
+                  )}
+                  {addingPlayer.step === 'multiclass' && (
+                    <div className="flex flex-col items-center justify-center flex-1 gap-4">
+                      <span className="text-cyan-400 font-mono text-sm">SELECT MULTICLASS FOR: {addingPlayer.charName}</span>
+                      <div className="grid grid-cols-4 gap-2 w-full max-w-lg">
+                        {CLASSES.filter(cls => !addingPlayer.existingClasses.includes(cls)).map(cls => (
+                          <button key={cls} onClick={() => { addMulticlass(addingPlayer.charId, cls); setAddingPlayer(null); }} className="py-3 bg-gray-800/50 border border-orange-500/30 text-orange-300 font-mono text-sm hover:bg-orange-500/20 hover:border-orange-400 transition-all">{cls}</button>
+                        ))}
+                      </div>
+                      <button onClick={() => setAddingPlayer(null)} className="px-4 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">CANCEL</button>
+                    </div>
+                  )}
+                  {addingPlayer.step === 'subclass' && (
+                    <div className="flex flex-col items-center justify-center flex-1 gap-4">
+                      <span className="text-cyan-400 font-mono text-sm">SELECT {addingPlayer.className.toUpperCase()} SUBCLASS FOR: {addingPlayer.charName}</span>
+                      <div className="grid grid-cols-4 gap-2 w-full max-w-xl">
+                        {SUBCLASSES[addingPlayer.className].map(sub => (
+                          <button key={sub} onClick={() => assignSubclass(addingPlayer.charId, addingPlayer.classIndex, sub)} className="py-3 bg-gray-800/50 border border-fuchsia-500/30 text-fuchsia-300 font-mono text-sm hover:bg-fuchsia-500/20 hover:border-fuchsia-400 transition-all">{sub}</button>
+                        ))}
+                      </div>
+                      <button onClick={() => setAddingPlayer(null)} className="px-4 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">CANCEL</button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <button onClick={startAddPlayer} className="w-full py-1 mb-1 bg-gray-800/50 border border-cyan-500/30 text-cyan-300 font-mono text-xs hover:bg-cyan-500/20 hover:border-cyan-400 transition-all flex-shrink-0">+ ADD OPERATIVE</button>
+                  {party.length === 0 ? (
+                    <div className="text-center text-gray-500 font-mono mt-8">NO OPERATIVES REGISTERED</div>
+                  ) : (
+                    <div className="flex-1 grid gap-2" style={{gridTemplateColumns: `repeat(${Math.min(party.length + minions.length, 3)}, 1fr)`, gridAutoRows: '1fr'}}>
+                      {party.map((char) => {
+                        const charLevel = getCharacterLevel(char);
+                        const needsLevelUp = !char.kia && charLevel < partyLevel;
+                        const levelsNeeded = partyLevel - charLevel;
+                        const canMulticlass = char.classes.length < 2;
+                        const charMinions = minions.filter(m => m.followingId === char.id);
+                        return (
+                          <div key={char.id} className={`bg-gray-900/50 border p-3 rounded flex flex-col ${char.kia ? 'border-red-900/50 opacity-60' : 'border-cyan-500/20'}`}>
+                            <div className="flex justify-between items-center gap-2 mb-1">
+                              <div className={`text-lg font-bold truncate ${char.kia ? 'text-gray-500 line-through' : 'text-cyan-100'}`}>{char.name}</div>
+                              <div className="flex gap-1 items-center flex-shrink-0">
+                                {!char.kia && <button onClick={() => startAddMinion(char.id, char.name)} className="px-1.5 py-0.5 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-xs hover:border-cyan-500/50 hover:text-cyan-400">+</button>}
+                                <button onClick={() => cycleStatus(char.id, char.kia)} className={`px-2 py-0.5 border font-mono text-[10px] transition-all ${getStatusDisplay(char).color}`}>{char.kia ? (statusTimers[char.id] === 'reviving' ? 'REVIVE?' : 'KIA') : (statusTimers[char.id] === 'mia' ? 'MIA?' : 'ACTIVE')}</button>
+                                <button onClick={() => deleteCharacter(char.id)} className={`px-1.5 py-0.5 border font-mono text-[10px] transition-all ${confirmDeleteChar === char.id ? 'bg-red-500/30 border-red-400 text-red-200 animate-pulse' : 'bg-gray-800/50 border-gray-700 text-gray-500 hover:border-red-500/50 hover:text-red-400'}`}>{confirmDeleteChar === char.id ? '??' : '✕'}</button>
+                              </div>
+                            </div>
+                            <div className={`text-sm font-mono mb-2 ${char.kia ? 'text-gray-600' : 'text-fuchsia-400'}`}>
+                              Lvl {charLevel} <span className="text-gray-500">{char.origin}</span>
+                            </div>
+                            <div className="text-sm font-mono text-gray-400 mb-3">
+                              {char.classes.map((c, i) => (<span key={i}>{i > 0 && ' / '}<span className={char.kia ? 'text-gray-500' : 'text-cyan-300'}>{c.name} {c.level}{c.subclass && <span className="text-gray-500"> ({c.subclass})</span>}</span></span>))}
+                            </div>
+                            <div className="flex gap-3 mb-3">
+                              <div className="flex items-center gap-1"><span className="text-gray-500 font-mono text-xs">PER</span><input type="number" value={char.passivePerception || 10} onChange={(e) => updateCharPassive(char.id, 'passivePerception', e.target.value)} className="w-10 bg-gray-800 border border-cyan-500/30 text-cyan-300 px-1 py-0.5 text-center font-mono text-sm" /></div>
+                              <div className="flex items-center gap-1"><span className="text-gray-500 font-mono text-xs">INS</span><input type="number" value={char.passiveInsight || 10} onChange={(e) => updateCharPassive(char.id, 'passiveInsight', e.target.value)} className="w-10 bg-gray-800 border border-cyan-500/30 text-cyan-300 px-1 py-0.5 text-center font-mono text-sm" /></div>
+                              <div className="flex items-center gap-1"><span className="text-gray-500 font-mono text-xs">INV</span><input type="number" value={char.passiveInvestigation || 10} onChange={(e) => updateCharPassive(char.id, 'passiveInvestigation', e.target.value)} className="w-10 bg-gray-800 border border-cyan-500/30 text-cyan-300 px-1 py-0.5 text-center font-mono text-sm" /></div>
+                            </div>
+                            <div className="flex flex-wrap gap-1 flex-1 content-start">
+                              {(char.relevantFeats || []).map((feat, i) => (<button key={i} onDoubleClick={() => removeRelevantFeat(char.id, i)} className="px-2 py-0.5 bg-yellow-900/30 border border-yellow-600/50 text-yellow-300 font-mono text-xs hover:border-yellow-400" title="Double-click to remove">{feat}</button>))}
+                              <button onClick={() => setAddingFeat({ charId: char.id, charName: char.name, feat: '' })} className="px-2 py-0.5 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-xs hover:border-yellow-500/50 hover:text-yellow-400">+ Note</button>
+                            </div>
+                            {charMinions.length > 0 && <div className="text-xs text-purple-400 font-mono mt-2">⤷ {charMinions.map(m => m.name).join(', ')}</div>}
+                            {needsLevelUp && (
+                              <div className="flex gap-1 flex-wrap mt-auto pt-2 border-t border-gray-700/50">
+                                <span className="text-yellow-400 font-mono text-sm animate-pulse">+{levelsNeeded}</span>
+                                {char.classes.map((c, i) => (<button key={i} onClick={() => levelUpClass(char.id, i)} className="px-2 py-1 bg-cyan-900/30 border border-cyan-500/50 text-cyan-300 font-mono text-xs hover:bg-cyan-500/30">→ {c.name}</button>))}
+                                {canMulticlass && <button onClick={() => setAddingPlayer({ step: 'multiclass', charId: char.id, charName: char.name, existingClasses: char.classes.map(c => c.name) })} className="px-2 py-1 bg-orange-900/30 border border-orange-500/50 text-orange-300 font-mono text-xs hover:bg-orange-500/30">+ Multi</button>}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {minions.map(m => (
+                        <div key={m.id} className="bg-gray-900/50 border border-purple-500/20 p-3 rounded flex flex-col">
+                          <div className="flex justify-between items-center gap-2 mb-1">
+                            <div className="text-lg font-bold text-purple-300 truncate">{m.name}</div>
+                            <button onClick={() => removeMinion(m.id)} className="px-2 py-0.5 bg-red-900/30 border border-red-500/50 text-red-400 font-mono text-[10px] hover:bg-red-500/30 flex-shrink-0">DISMISS</button>
+                          </div>
+                          <div className="text-sm font-mono text-purple-400 mb-2">Lvl {partyLevel} <span className="text-gray-500">{m.type}</span></div>
+                          <div className="text-sm font-mono text-gray-500 mb-3">Following {m.followingName}</div>
+                          <div className="flex gap-3 mt-auto">
+                            <div className="flex items-center gap-1"><span className="text-gray-500 font-mono text-xs">PER</span><input type="number" value={m.passivePerception || 10} onChange={(e) => updateMinionPassive(m.id, 'passivePerception', e.target.value)} className="w-10 bg-gray-800 border border-purple-500/30 text-purple-300 px-1 py-0.5 text-center font-mono text-sm" /></div>
+                            <div className="flex items-center gap-1"><span className="text-gray-500 font-mono text-xs">INS</span><input type="number" value={m.passiveInsight || 10} onChange={(e) => updateMinionPassive(m.id, 'passiveInsight', e.target.value)} className="w-10 bg-gray-800 border border-purple-500/30 text-purple-300 px-1 py-0.5 text-center font-mono text-sm" /></div>
+                            <div className="flex items-center gap-1"><span className="text-gray-500 font-mono text-xs">INV</span><input type="number" value={m.passiveInvestigation || 10} onChange={(e) => updateMinionPassive(m.id, 'passiveInvestigation', e.target.value)} className="w-10 bg-gray-800 border border-purple-500/30 text-purple-300 px-1 py-0.5 text-center font-mono text-sm" /></div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          ) : showCombat ? (
+            <div className="flex-1 overflow-auto flex flex-col">
+              {addingEnemy ? (
+                <div className="flex-1 flex flex-col items-center justify-center gap-4">
+                  <span className="text-red-400 font-mono text-sm">ADD ENEMY — CR {addingEnemy.cr} ({addingEnemy.xp} XP{addingEnemy.quantity > 1 ? ` × ${addingEnemy.quantity} = ${addingEnemy.xp * addingEnemy.quantity} XP` : ''})</span>
+                  <input type="text" value={addingEnemy.name} onChange={(e) => setAddingEnemy(p => ({ ...p, name: e.target.value }))} className="bg-gray-900 border border-red-500/50 text-red-100 px-4 py-2 font-mono text-center focus:outline-none focus:border-red-400 w-64" placeholder="Name..." autoFocus />
+                  <input type="number" value={addingEnemy.hp} onChange={(e) => setAddingEnemy(p => ({ ...p, hp: e.target.value }))} className="bg-gray-900 border border-red-500/50 text-red-100 px-4 py-2 font-mono text-center focus:outline-none focus:border-red-400 w-64" placeholder="HP..." />
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-400 font-mono text-sm">INIT: d20({addingEnemy.initRoll})</span>
+                    <span className="text-gray-500">+</span>
+                    <div className="flex gap-1">
+                      {[-5,-4,-3,-2,-1,0,1,2,3,4,5].map(mod => (
+                        <button key={mod} onClick={() => setAddingEnemy(p => ({ ...p, initMod: mod }))} className={`w-8 h-8 font-mono text-xs border transition-all ${addingEnemy.initMod === mod ? 'bg-red-500/20 border-red-400 text-red-300' : 'bg-gray-800/50 border-gray-600 text-gray-400 hover:border-red-500/50'}`}>{mod >= 0 ? `+${mod}` : mod}</button>
+                      ))}
+                    </div>
+                    <span className="text-red-300 font-mono text-sm">= {addingEnemy.initRoll + addingEnemy.initMod}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-400 font-mono text-sm">QTY:</span>
+                    <div className="flex gap-1">
+                      {[1,2,3,4,5,6,7,8,9,10].map(q => (
+                        <button key={q} onClick={() => setAddingEnemy(p => ({ ...p, quantity: q }))} className={`w-8 h-8 font-mono text-xs border transition-all ${addingEnemy.quantity === q ? 'bg-red-500/20 border-red-400 text-red-300' : 'bg-gray-800/50 border-gray-600 text-gray-400 hover:border-red-500/50'}`}>{q}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setAddingEnemy(null)} className="px-4 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">CANCEL</button>
+                    <button onClick={confirmAddEnemy} disabled={!addingEnemy.name || !addingEnemy.hp} className="px-4 py-2 bg-red-500/20 border border-red-400 text-red-300 font-mono text-sm disabled:opacity-50">ADD {addingEnemy.quantity > 1 ? `${addingEnemy.quantity} ENEMIES` : 'TO COMBAT'}</button>
+                  </div>
+                </div>
+              ) : combatants.length === 0 ? (
+                <div className="flex-1 flex flex-col">
+                  <div className="flex gap-2 mb-2 items-center text-xs">
+                    <span className="text-gray-500 font-mono">PARTY: {livingPartySize}</span>
+                    <span className="text-gray-600">|</span>
+                    <span className="text-green-400">E:{getPartyThresholds().easy}</span>
+                    <span className="text-yellow-400">M:{getPartyThresholds().medium}</span>
+                    <span className="text-orange-400">H:{getPartyThresholds().hard}</span>
+                    <span className="text-red-400">D:{getPartyThresholds().deadly}</span>
+                    {enemies.length > 0 && (<><span className="text-gray-600">|</span><span style={{color: getDifficulty().color}} className="font-mono">{getAdjustedXp()} XP ({getDifficulty().label})</span></>)}
+                  </div>
+                  <div className="flex gap-1 mb-1">
+                    {['0','1/8','1/4','1/2','1','2','3','4','5','6','7','8'].map(cr => (
+                      <button key={cr} onClick={() => startAddEnemy(cr)} className="flex-1 py-1 bg-gray-800/80 border border-red-500/30 text-red-300 text-xs font-mono hover:bg-red-500/20 hover:border-red-400 transition-all">{cr}</button>
+                    ))}
+                  </div>
+                  <div className="flex gap-1 mb-2">
+                    {['9','10','11','12','13','14','15','16','17','18','19','20'].map(cr => (
+                      <button key={cr} onClick={() => startAddEnemy(cr)} className="flex-1 py-1 bg-gray-800/80 border border-red-500/30 text-red-300 text-xs font-mono hover:bg-red-500/20 hover:border-red-400 transition-all">{cr}</button>
+                    ))}
+                  </div>
+                  {enemies.length > 0 && (
+                    <div className="flex-1 overflow-auto">
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        {enemies.map(e => (
+                          <div key={e.id} className="bg-gray-900/50 border border-red-500/30 p-2 rounded flex justify-between items-center">
+                            <div>
+                              <div className="text-red-300 font-mono text-sm">{e.name}</div>
+                              <div className="text-gray-500 font-mono text-xs">CR {e.cr} · HP {e.maxHp} · Init {e.initiative}</div>
+                            </div>
+                            <button onClick={() => removeEnemy(e.id)} className="text-gray-600 hover:text-red-400 text-xs font-mono">✕</button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex gap-2 mt-auto">
+                    <button onClick={cancelCombat} className="flex-1 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">CANCEL</button>
+                    <button onClick={startCombat} disabled={enemies.length === 0} className="flex-1 py-2 bg-red-500/20 border border-red-400 text-red-300 font-mono text-sm disabled:opacity-50">START COMBAT</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex-1 flex flex-col">
+                  {addingCondition ? (
+                    <div className="flex-1 flex flex-col items-center justify-center gap-4">
+                      {!addingCondition.condition ? (
+                        <>
+                          <span className="text-yellow-400 font-mono text-sm">SELECT CONDITION</span>
+                          <div className="grid grid-cols-4 gap-2 w-full max-w-lg">
+                            {CONDITIONS.map(cond => (<button key={cond} onClick={() => selectCondition(cond)} className="py-2 bg-gray-800/50 border border-yellow-500/30 text-yellow-300 font-mono text-xs hover:bg-yellow-500/20 hover:border-yellow-400 transition-all">{cond}</button>))}
+                          </div>
+                          <button onClick={() => setAddingCondition(null)} className="px-4 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">CANCEL</button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-yellow-400 font-mono text-sm">SET DURATION: {addingCondition.condition}</span>
+                          <div className="flex flex-col gap-2 items-center">
+                            <span className="text-gray-400 font-mono text-xs">EXPIRES AT START OF:</span>
+                            <div className="flex gap-1 flex-wrap justify-center">
+                              {sortedCombatants.map(c => (<button key={c.id} onClick={() => setAddingCondition(p => ({ ...p, expiresOnId: c.id }))} className={`px-2 py-1 font-mono text-xs border transition-all ${addingCondition.expiresOnId === c.id ? 'bg-yellow-500/20 border-yellow-400 text-yellow-300' : 'bg-gray-800/50 border-gray-600 text-gray-400'}`}>{c.name}</button>))}
+                            </div>
+                            <span className="text-gray-400 font-mono text-xs mt-2">IN ROUNDS:</span>
+                            <div className="flex gap-1">
+                              {[1,2,3,4,5,6,7,8,9,10].map(r => (<button key={r} onClick={() => setAddingCondition(p => ({ ...p, rounds: r }))} className={`w-8 h-8 font-mono text-xs border transition-all ${addingCondition.rounds === r ? 'bg-yellow-500/20 border-yellow-400 text-yellow-300' : 'bg-gray-800/50 border-gray-600 text-gray-400'}`}>{r}</button>))}
+                            </div>
+                            <span className="text-gray-500 font-mono text-xs mt-1">Expires: Round {currentRound + addingCondition.rounds}, {combatants.find(c => c.id === addingCondition.expiresOnId)?.name}'s turn</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={() => setAddingCondition(p => ({ ...p, condition: null }))} className="px-4 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">◀ BACK</button>
+                            <button onClick={confirmAddCondition} className="px-4 py-2 bg-yellow-500/20 border border-yellow-400 text-yellow-300 font-mono text-sm">APPLY</button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ) : hdywtdt ? (
+                    <div className="flex-1 flex flex-col items-center justify-center gap-6">
+                      <div className="text-4xl font-bold text-red-400" style={{textShadow: '0 0 30px rgba(255,0,0,0.5)'}}>⚔</div>
+                      <div className="text-2xl font-bold text-cyan-300 font-mono text-center" style={{textShadow: '0 0 20px rgba(0,255,255,0.5)'}}>{hdywtdt},</div>
+                      <div className="text-3xl font-bold text-fuchsia-400 font-mono text-center italic" style={{textShadow: '0 0 20px rgba(255,0,255,0.5)'}}>How do you want to do this?</div>
+                      <button onClick={() => { setHdywtdt(null); finishCombat(); }} className="px-6 py-3 bg-green-500/20 border-2 border-green-400 text-green-300 font-mono text-lg hover:bg-green-500/30 hover:shadow-[0_0_20px_rgba(0,255,0,0.4)] transition-all">FINISH COMBAT (+{calculateEncounterXp()} XP)</button>
+                      <button onClick={() => setHdywtdt(null)} className="px-4 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">Not yet...</button>
+                    </div>
+                  ) : midCombatAdd ? (
+                    <div className="flex-1 flex flex-col items-center justify-center gap-4">
+                      {midCombatAdd.step === 'type' ? (
+                        <>
+                          <span className="text-cyan-400 font-mono text-sm">ADD COMBATANT</span>
+                          <div className="flex gap-4">
+                            <button onClick={() => selectMidCombatType('enemy')} className="px-6 py-4 bg-red-900/30 border-2 border-red-500/50 text-red-300 font-mono text-lg hover:bg-red-500/20 hover:border-red-400 transition-all">ENEMY</button>
+                            <button onClick={() => selectMidCombatType('party')} className="px-6 py-4 bg-cyan-900/30 border-2 border-cyan-500/50 text-cyan-300 font-mono text-lg hover:bg-cyan-500/20 hover:border-cyan-400 transition-all">PARTY</button>
+                          </div>
+                          <button onClick={() => setMidCombatAdd(null)} className="px-4 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">CANCEL</button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-cyan-400 font-mono text-sm">ADD {midCombatAdd.type.toUpperCase()}</span>
+                          <input type="text" value={midCombatAdd.name} onChange={(e) => setMidCombatAdd(p => ({ ...p, name: e.target.value }))} className="bg-gray-900 border border-cyan-500/50 text-cyan-100 px-4 py-2 font-mono text-center focus:outline-none focus:border-cyan-400 w-64" placeholder="Name..." autoFocus />
+                          {midCombatAdd.type === 'enemy' && (
+                            <>
+                              <input type="number" value={midCombatAdd.hp} onChange={(e) => setMidCombatAdd(p => ({ ...p, hp: e.target.value }))} className="bg-gray-900 border border-red-500/50 text-red-100 px-4 py-2 font-mono text-center focus:outline-none focus:border-red-400 w-64" placeholder="HP..." />
+                              <div className="flex gap-1 flex-wrap justify-center">
+                                {['0','1/8','1/4','1/2','1','2','3','4','5','6','7','8','9','10'].map(cr => (<button key={cr} onClick={() => setMidCombatAdd(p => ({ ...p, cr }))} className={`px-2 py-1 font-mono text-xs border transition-all ${midCombatAdd.cr === cr ? 'bg-red-500/20 border-red-400 text-red-300' : 'bg-gray-800/50 border-gray-600 text-gray-400'}`}>{cr}</button>))}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-gray-400 font-mono text-xs">QTY:</span>
+                                <div className="flex gap-1">
+                                  {[1,2,3,4,5,6,7,8,9,10].map(q => (<button key={q} onClick={() => setMidCombatAdd(p => ({ ...p, quantity: q }))} className={`w-7 h-7 font-mono text-xs border transition-all ${midCombatAdd.quantity === q ? 'bg-red-500/20 border-red-400 text-red-300' : 'bg-gray-800/50 border-gray-600 text-gray-400'}`}>{q}</button>))}
+                                </div>
+                              </div>
+                            </>
+                          )}
+                          <div className="flex flex-col gap-2 items-center mt-2">
+                            <span className="text-gray-400 font-mono text-xs">INITIATIVE</span>
+                            <div className="flex gap-2">
+                              <button onClick={() => setMidCombatAdd(p => ({ ...p, initMethod: 'attach' }))} className={`px-3 py-2 font-mono text-xs border transition-all ${midCombatAdd.initMethod === 'attach' ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300' : 'bg-gray-800/50 border-gray-600 text-gray-400'}`}>ATTACH TO {combatants.find(c => c.id === midCombatAdd.attachTo)?.name || '...'}</button>
+                              {midCombatAdd.type === 'enemy' ? (
+                                <button onClick={() => setMidCombatAdd(p => ({ ...p, initMethod: 'roll' }))} className={`px-3 py-2 font-mono text-xs border transition-all ${midCombatAdd.initMethod === 'roll' ? 'bg-red-500/20 border-red-400 text-red-300' : 'bg-gray-800/50 border-gray-600 text-gray-400'}`}>ROLL</button>
+                              ) : (
+                                <button onClick={() => setMidCombatAdd(p => ({ ...p, initMethod: 'manual' }))} className={`px-3 py-2 font-mono text-xs border transition-all ${midCombatAdd.initMethod === 'manual' ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300' : 'bg-gray-800/50 border-gray-600 text-gray-400'}`}>ENTER</button>
+                              )}
+                            </div>
+                            {midCombatAdd.initMethod === 'roll' && (
+                              <div className="flex items-center gap-2 mt-2">
+                                <span className="text-gray-400 font-mono text-sm">d20({midCombatAdd.initRoll}) +</span>
+                                <div className="flex gap-1">
+                                  {[-5,-4,-3,-2,-1,0,1,2,3,4,5].map(mod => (<button key={mod} onClick={() => setMidCombatAdd(p => ({ ...p, initMod: mod }))} className={`w-7 h-7 font-mono text-xs border transition-all ${midCombatAdd.initMod === mod ? 'bg-red-500/20 border-red-400 text-red-300' : 'bg-gray-800/50 border-gray-600 text-gray-400'}`}>{mod >= 0 ? `+${mod}` : mod}</button>))}
+                                </div>
+                                <span className="text-red-300 font-mono text-sm">= {midCombatAdd.initRoll + midCombatAdd.initMod}</span>
+                              </div>
+                            )}
+                            {midCombatAdd.initMethod === 'manual' && (<input type="number" value={midCombatAdd.manualInit} onChange={(e) => setMidCombatAdd(p => ({ ...p, manualInit: e.target.value }))} className="bg-gray-900 border border-cyan-500/50 text-cyan-100 px-4 py-2 font-mono text-center focus:outline-none focus:border-cyan-400 w-32 mt-2" placeholder="Initiative..." />)}
+                          </div>
+                          <div className="flex gap-2 mt-4">
+                            <button onClick={() => setMidCombatAdd({ step: 'type' })} className="px-4 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">◀ BACK</button>
+                            <button onClick={confirmMidCombatAdd} disabled={!midCombatAdd.name || (midCombatAdd.type === 'enemy' && !midCombatAdd.hp)} className="px-4 py-2 bg-green-500/20 border border-green-400 text-green-300 font-mono text-sm disabled:opacity-50">ADD {midCombatAdd.type === 'enemy' && midCombatAdd.quantity > 1 ? `${midCombatAdd.quantity} ENEMIES` : 'TO COMBAT'}</button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ) : deathSaveTarget ? (
+                    <div className="flex-1 flex flex-col items-center justify-center gap-4">
+                      <span className="text-red-400 font-mono text-sm">DEATH SAVES: {combatants.find(c => c.id === deathSaveTarget)?.name}</span>
+                      <div className="flex gap-8">
+                        <div className="flex flex-col items-center gap-2">
+                          <span className="text-green-400 font-mono text-xs">SUCCESSES</span>
+                          <div className="flex gap-1">
+                            {[0,1,2].map(i => { const saves = combatants.find(c => c.id === deathSaveTarget)?.deathSaves; return (<button key={i} onClick={() => updateDeathSave(deathSaveTarget, 'successes', saves?.successes > i ? -1 : 1)} className={`w-8 h-8 rounded-full border-2 transition-all ${saves?.successes > i ? 'bg-green-500 border-green-400' : 'bg-gray-800 border-gray-600'}`} />); })}
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-center gap-2">
+                          <span className="text-red-400 font-mono text-xs">FAILURES</span>
+                          <div className="flex gap-1">
+                            {[0,1,2].map(i => { const saves = combatants.find(c => c.id === deathSaveTarget)?.deathSaves; return (<button key={i} onClick={() => updateDeathSave(deathSaveTarget, 'failures', saves?.failures > i ? -1 : 1)} className={`w-8 h-8 rounded-full border-2 transition-all ${saves?.failures > i ? 'bg-red-500 border-red-400' : 'bg-gray-800 border-gray-600'}`} />); })}
+                          </div>
+                        </div>
+                      </div>
+                      {combatants.find(c => c.id === deathSaveTarget)?.deathSaves?.successes >= 3 && <span className="text-green-400 font-mono animate-pulse">STABILIZED!</span>}
+                      {combatants.find(c => c.id === deathSaveTarget)?.deathSaves?.failures >= 3 && <span className="text-red-400 font-mono animate-pulse">DECEASED</span>}
+                      <div className="flex gap-2">
+                        <button onClick={() => resetDeathSaves(deathSaveTarget)} className="px-4 py-2 bg-gray-800/50 border border-orange-500/30 text-orange-300 font-mono text-sm">RESET</button>
+                        <button onClick={() => setDeathSaveTarget(null)} className="px-4 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">CLOSE</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex gap-2 mb-2 items-center">
+                        <span className="text-yellow-400 font-mono text-sm">ROUND {currentRound}</span>
+                        <button onClick={prevTurn} className="px-3 py-1 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">◀ PREV</button>
+                        <button onClick={nextTurn} className="px-3 py-1 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">NEXT ▶</button>
+                        <button onClick={startMidCombatAdd} className="px-3 py-1 bg-cyan-900/30 border border-cyan-500/50 text-cyan-300 font-mono text-sm">+ ADD</button>
+                        <div className="flex-1" />
+                        <button onClick={finishCombat} className="px-3 py-1 bg-green-500/20 border border-green-400 text-green-300 font-mono text-sm">FINISH (+{calculateEncounterXp()} XP)</button>
+                      </div>
+                      <div className="flex-1 overflow-auto space-y-1">
+                        {sortedCombatants.map((c, idx) => (
+                          <div key={c.id} className={`p-2 rounded border font-mono text-sm ${idx === currentTurn ? 'bg-yellow-500/20 border-yellow-400' : c.type === 'enemy' && c.dead ? 'bg-gray-900/30 border-gray-700 opacity-50' : c.type === 'enemy' ? 'bg-red-900/20 border-red-500/30' : c.type === 'minion' ? 'bg-purple-900/20 border-purple-500/30' : 'bg-cyan-900/20 border-cyan-500/30'}`}>
+                            <div className="flex items-center gap-2">
+                              {(c.type === 'party' || c.type === 'minion') && editingInitiative === c.id ? (
+                                <input type="number" defaultValue={c.initiative} onKeyDown={(e) => { if (e.key === 'Enter') { if (c.type === 'party') updatePartyInitiative(c.id, e.target.value); else setCombatants(p => p.map(x => x.id === c.id ? { ...x, initiative: parseInt(e.target.value) || 0 } : x)); setEditingInitiative(null); } if (e.key === 'Escape') setEditingInitiative(null); }} onBlur={(e) => { if (c.type === 'party') updatePartyInitiative(c.id, e.target.value); else setCombatants(p => p.map(x => x.id === c.id ? { ...x, initiative: parseInt(e.target.value) || 0 } : x)); setEditingInitiative(null); }} className="w-10 bg-gray-800 border border-cyan-400 text-cyan-300 px-1 py-0.5 text-center text-xs font-mono" autoFocus />
+                              ) : (
+                                <button onClick={() => (c.type === 'party' || c.type === 'minion') && setEditingInitiative(c.id)} className={`w-8 text-center ${(c.type === 'party' || c.type === 'minion') ? 'text-cyan-400 hover:text-cyan-200 cursor-pointer' : 'text-gray-400 cursor-default'}`}>{c.initiative}</button>
+                              )}
+                              <div className={`flex-1 ${c.dead ? 'line-through text-gray-500' : c.type === 'enemy' ? 'text-red-300' : c.type === 'minion' ? 'text-purple-300' : 'text-cyan-300'}`}>
+                                {c.name}
+                                {c.type === 'minion' && <span className="text-gray-600 text-xs ml-1">({c.minionType}) ↳ {c.followingName}</span>}
+                                {c.attachedTo && c.type !== 'minion' && <span className="text-gray-600 text-xs ml-1">↳ {combatants.find(x => x.id === c.attachedTo)?.name}</span>}
+                                {c.type === 'enemy' && c.dead && c.killedBy && <span className="text-gray-600 text-xs ml-2 no-underline italic">killed by {c.killedBy}</span>}
+                              </div>
+                              {c.conditions.length > 0 && (
+                                <div className="flex gap-1 flex-wrap">
+                                  {c.conditions.map(cond => (<button key={cond.id} onClick={() => removeCondition(c.id, cond.id)} className={`px-1 py-0.5 text-[10px] rounded border transition-all ${confirmRemoveCondition?.conditionId === cond.id ? 'bg-red-500/30 border-red-400 text-red-200 animate-pulse' : 'bg-yellow-900/30 border-yellow-600 text-yellow-400'}`}>{cond.name} (R{cond.expiresAtRound})</button>))}
+                                </div>
+                              )}
+                              <button onClick={() => startAddCondition(c.id)} className="px-2 py-1 bg-yellow-900/30 border border-yellow-600/50 text-yellow-500 text-xs hover:bg-yellow-500/20">+COND</button>
+                              {(c.type === 'party' || c.type === 'minion') ? (
+                                <button onClick={() => setDeathSaveTarget(c.id)} className={`px-2 py-1 border text-xs ${c.deathSaves?.failures > 0 || c.deathSaves?.successes > 0 ? 'bg-red-900/30 border-red-500/50 text-red-400' : 'bg-gray-800/50 border-gray-600 text-gray-500'}`}>☠</button>
+                              ) : (
+                                <div className="flex items-center gap-1">
+                                  <input type="number" value={c.currentHp} onChange={(e) => setEnemyHp(c.id, e.target.value)} className="w-12 bg-gray-800 border border-red-500/30 text-red-300 px-1 py-1 text-center text-xs" />
+                                  <span className="text-gray-500 text-xs">/{c.maxHp}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="bg-gray-900/50 border border-cyan-500/20 p-2 rounded mb-2">
+                <div className="flex justify-between items-center text-sm mb-1">
+                  <span className="text-cyan-400 font-mono">LVL {level}</span>
+                  <span className="text-lg font-bold font-mono" style={{textShadow: '0 0 10px rgba(255,0,255,0.5)', color: '#ff00ff'}}>{totalXp.toLocaleString()} XP</span>
+                  <span className="text-cyan-400 font-mono">{getNextThreshold(totalXp).toLocaleString()}</span>
+                </div>
+                <div className="h-2 bg-gray-800 rounded overflow-hidden border border-cyan-500/30">
+                  <div className="h-full transition-all duration-500" style={{width: `${progress}%`, background: 'linear-gradient(90deg, #00ffff, #ff00ff)'}} />
+                </div>
+              </div>
+
+              <div className="flex gap-1 mb-2 text-xs">
+                <button onClick={() => setRecapMultiplier(p => !p)} className={`py-1 px-2 border font-mono transition-all ${recapMultiplier ? 'bg-orange-500/20 border-orange-400 text-orange-300' : 'bg-gray-800/50 border-gray-600 text-gray-400'}`}>RECAP {recapMultiplier ? '◉' : '○'}</button>
+                <button onClick={() => setPresenceMultiplier(p => !p)} className={`py-1 px-2 border font-mono transition-all ${presenceMultiplier ? 'bg-orange-500/20 border-orange-400 text-orange-300' : 'bg-gray-800/50 border-gray-600 text-gray-400'}`}>FULL PARTY {presenceMultiplier ? '◉' : '○'}</button>
+                <div className="px-2 py-1 bg-gray-800/50 border border-cyan-500/30 text-cyan-300 font-mono">×{getMultiplier().toFixed(2)}</div>
+                <div className="flex-1 flex items-center justify-end gap-2">
+                  {pendingXp > 0 && (
+                    <button onClick={() => setShowPendingLog(p => !p)} className="flex items-center gap-2 px-2 py-1 bg-gray-800/50 border border-fuchsia-500/30 rounded hover:border-fuchsia-400 transition-all">
+                      <span className="text-fuchsia-300 font-mono">+{pendingXp.toLocaleString()} pending</span>
+                      {willLevelUp() && <span className="text-yellow-300 font-bold animate-pulse">LEVEL PENDING!</span>}
+                      <span className="text-fuchsia-400">{showPendingLog ? '▼' : '▶'}</span>
+                    </button>
+                  )}
+                  <button onClick={endSession} disabled={pendingXp === 0} className={`px-3 py-1 border font-mono transition-all ${pendingXp > 0 ? 'bg-fuchsia-500/20 border-fuchsia-400 text-fuchsia-300 hover:bg-fuchsia-500/30 hover:shadow-[0_0_15px_rgba(255,0,255,0.3)]' : 'bg-gray-800/30 border-gray-700 text-gray-600 cursor-not-allowed'}`}>END SESSION</button>
+                </div>
+              </div>
+
+              {showPendingLog && pendingLog.length > 0 && (
+                <div className="mb-2 p-2 bg-gray-900/50 border border-fuchsia-500/30 rounded text-xs">
+                  <div className="flex flex-wrap gap-1">
+                    {pendingLog.map((entry, i) => (<button key={i} onClick={() => removePendingEntry(i)} className={`px-2 py-1 border font-mono hover:opacity-70 transition-all ${entry.type === 'operative' ? entry.name.startsWith('☠') ? 'bg-red-900/30 border-red-500/50 text-red-300' : entry.name.startsWith('💉') ? 'bg-blue-900/30 border-blue-500/50 text-blue-300' : 'bg-green-900/30 border-green-500/50 text-green-300' : 'bg-fuchsia-900/30 border-fuchsia-500/50 text-fuchsia-300'}`}>{entry.type === 'operative' ? `${entry.name} ×` : `${entry.name} +${entry.gained} ×`}</button>))}
+                    <button onClick={clearPending} className="px-2 py-1 bg-red-900/30 border border-red-500/50 text-red-300 font-mono hover:bg-red-500/30 transition-all ml-auto">CLEAR ALL</button>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-3 gap-2 flex-1 min-h-0 mb-2">
+                {/* Left Column - Story & Roleplay */}
+                <div className="flex flex-col gap-2">
+                  {['Story', 'Roleplay'].map(category => (
+                    <div key={category} className="bg-gray-900/30 border border-cyan-500/30 p-2 rounded-lg flex flex-col flex-1">
+                      <h3 className="text-sm font-bold text-fuchsia-400 italic text-center mb-1">{category}</h3>
+                      <div className="grid grid-cols-2 gap-1 flex-1">
+                        {xpCategories[category].map(({ name, xp }) => (<button key={name} onClick={() => addXp(name, xp)} className="xp-btn flex flex-col items-center justify-center bg-gray-900/50 border border-cyan-500/40 rounded text-gray-200 hover:bg-cyan-500/10 hover:border-cyan-400 transition-all"><span className="xp-name font-medium">{name}</span><span className="xp-value text-cyan-400 font-mono">+{xp}</span></button>))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Center Column - Passives & Relevant Feats */}
+                <div className="flex flex-col gap-2">
+                  <div className="bg-gray-900/30 border border-cyan-500/30 p-2 rounded-lg flex-1">
+                    <h3 className="text-sm font-bold text-fuchsia-400 italic text-center mb-1">Passives</h3>
+                    <div className="text-xs text-gray-500 font-mono text-center mb-2">Perception | Insight | Investigation</div>
+                    {(() => {
+                      const activeChars = party.filter(c => !c.kia);
+                      const allEntities = [
+                        ...activeChars.map(c => ({ per: c.passivePerception || 10, ins: c.passiveInsight || 10, inv: c.passiveInvestigation || 10 })),
+                        ...minions.filter(m => activeChars.some(c => c.id === m.followingId)).map(m => ({ per: m.passivePerception || 10, ins: m.passiveInsight || 10, inv: m.passiveInvestigation || 10 }))
+                      ];
+                      const maxPer = Math.max(...allEntities.map(e => e.per), 0);
+                      const maxIns = Math.max(...allEntities.map(e => e.ins), 0);
+                      const maxInv = Math.max(...allEntities.map(e => e.inv), 0);
+                      return (
+                        <div className="space-y-1.5 overflow-auto">
+                          {activeChars.map(char => {
+                            const charMinions = minions.filter(m => m.followingId === char.id);
+                            const per = char.passivePerception || 10;
+                            const ins = char.passiveInsight || 10;
+                            const inv = char.passiveInvestigation || 10;
+                            return (
+                              <div key={char.id}>
+                                <div className="flex items-center justify-between text-sm font-mono">
+                                  <span className="text-cyan-300 truncate flex-1 font-semibold">{char.name}:</span>
+                                  <div className="flex gap-3">
+                                    <span className={per === maxPer ? 'text-cyan-300 font-bold' : 'text-gray-500'}>{per}</span>
+                                    <span className="text-gray-700">|</span>
+                                    <span className={ins === maxIns ? 'text-cyan-300 font-bold' : 'text-gray-500'}>{ins}</span>
+                                    <span className="text-gray-700">|</span>
+                                    <span className={inv === maxInv ? 'text-cyan-300 font-bold' : 'text-gray-500'}>{inv}</span>
+                                  </div>
+                                </div>
+                                {charMinions.map(m => {
+                                  const mPer = m.passivePerception || 10;
+                                  const mIns = m.passiveInsight || 10;
+                                  const mInv = m.passiveInvestigation || 10;
+                                  return (
+                                    <div key={m.id} className="flex items-center justify-between text-sm font-mono pl-3">
+                                      <span className="text-purple-400 truncate flex-1">↳ {m.name}:</span>
+                                      <div className="flex gap-3">
+                                        <span className={mPer === maxPer ? 'text-purple-300 font-bold' : 'text-gray-500'}>{mPer}</span>
+                                        <span className="text-gray-700">|</span>
+                                        <span className={mIns === maxIns ? 'text-purple-300 font-bold' : 'text-gray-500'}>{mIns}</span>
+                                        <span className="text-gray-700">|</span>
+                                        <span className={mInv === maxInv ? 'text-purple-300 font-bold' : 'text-gray-500'}>{mInv}</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })}
+                          {activeChars.length === 0 && <div className="text-gray-600 font-mono text-sm text-center">No active party</div>}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  <div className="bg-gray-900/30 border border-cyan-500/30 p-2 rounded-lg flex-1">
+                    <h3 className="text-sm font-bold text-fuchsia-400 italic text-center mb-1">Relevant Feats</h3>
+                    <div className="space-y-1 overflow-auto">
+                      {party.filter(c => !c.kia && (c.relevantFeats || []).length > 0).map(char => (
+                        <div key={char.id} className="text-xs font-mono">
+                          <span className="text-cyan-300">{char.name}:</span>{' '}
+                          <span className="text-yellow-300">{(char.relevantFeats || []).join(', ')}</span>
+                        </div>
+                      ))}
+                      {party.filter(c => !c.kia && (c.relevantFeats || []).length > 0).length === 0 && <div className="text-gray-600 font-mono text-xs text-center">No feats noted</div>}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column - Problem Solving & Side Quests */}
+                <div className="flex flex-col gap-2">
+                  {['Problem Solving', 'Side Quests'].map(category => (
+                    <div key={category} className="bg-gray-900/30 border border-cyan-500/30 p-2 rounded-lg flex flex-col flex-1">
+                      <h3 className="text-sm font-bold text-fuchsia-400 italic text-center mb-1">{category}</h3>
+                      <div className="grid grid-cols-2 gap-1 flex-1">
+                        {xpCategories[category].map(({ name, xp }) => (<button key={name} onClick={() => addXp(name, xp)} className="xp-btn flex flex-col items-center justify-center bg-gray-900/50 border border-cyan-500/40 rounded text-gray-200 hover:bg-cyan-500/10 hover:border-cyan-400 transition-all"><span className="xp-name font-medium">{name}</span><span className="xp-value text-cyan-400 font-mono">+{xp}</span></button>))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button onClick={() => { setShowCombat(true); setShowHistory(false); setShowParty(false); setShowShopLoot(false); }} className="flex-1 py-2 bg-red-900/30 border border-red-500/30 text-red-300 font-mono text-sm hover:bg-red-500/20 hover:border-red-400 transition-all">⚔ COMBAT</button>
+                <button onClick={() => { setShowShopLoot(true); setShowHistory(false); setShowParty(false); setShowCombat(false); resetShopLoot(); }} className="flex-1 py-2 bg-green-900/30 border border-green-500/30 text-green-300 font-mono text-sm hover:bg-green-500/20 hover:border-green-400 transition-all">📦 REQUISITIONS</button>
+              </div>
+            </>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<XPTracker />);
+  </script>
+</body>
+</html>
