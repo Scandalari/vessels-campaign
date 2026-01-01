@@ -1372,7 +1372,7 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
 
           {/* Skill Proficiencies */}
           <div className="bg-gray-900/50 border border-gray-600 p-2 rounded">
-            <div className="grid grid-cols-6 gap-1">
+            <div className="grid grid-cols-9 gap-1">
               {SKILL_LIST.map(skill => {
                 const profLevel = playerCharacter.skillProficiencies?.[skill.name] || 'none';
                 const bonus = getSkillBonus(skill.name);
@@ -1408,7 +1408,7 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
                       <button
                         key={`${key}-${i}`}
                         onClick={() => available ? useSpellSlot(key) : restoreSpellSlot(key)}
-                        className={`w-7 h-7 rounded-full border-2 font-mono text-xs font-bold flex items-center justify-center transition-all ${
+                        className={`w-5 h-5 rounded-full border-2 font-mono text-[10px] font-bold flex items-center justify-center transition-all ${
                           isPact
                             ? (available ? 'bg-fuchsia-500 border-fuchsia-400 text-white' : 'bg-fuchsia-900/50 border-fuchsia-800 text-fuchsia-600')
                             : (available ? 'bg-purple-500 border-purple-400 text-white' : 'bg-purple-900/50 border-purple-800 text-purple-600')
