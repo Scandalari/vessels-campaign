@@ -7,7 +7,7 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
   // ==================== STATE ====================
   const [playerCharacter, setPlayerCharacter] = useState(savedCharacter);
   const [playerSetupStep, setPlayerSetupStep] = useState(savedCharacter ? null : 'select');
-  const [currentView, setCurrentView] = useState('main'); // 'main', 'combat', 'config'
+  const [currentView, setCurrentView] = useState('main'); // 'main', 'combat', 'config', 'inventory'
   const [editingAbility, setEditingAbility] = useState(null);
   const [addingFeature, setAddingFeature] = useState(false);
   const [addingResource, setAddingResource] = useState(false);
@@ -15,6 +15,8 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
   const [addingSkill, setAddingSkill] = useState(false);
   const [newSkill, setNewSkill] = useState({ name: '', linkedResource: '', cost: 1, color: 'purple', notes: '' });
   const [openSkillIndex, setOpenSkillIndex] = useState(null);
+  const [addingInventoryItem, setAddingInventoryItem] = useState(false);
+  const [newInventoryItem, setNewInventoryItem] = useState({ name: '', quantity: 1, weight: 0, notes: '' });
   const [actionEconomy, setActionEconomy] = useState({ Action: true, Bonus: true, Reaction: true, Movement: true, Object: true });
   const [playerConcentration, setPlayerConcentration] = useState(null);
   const [damageInput, setDamageInput] = useState('');
@@ -130,10 +132,12 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
     features: [],
     skills: [],
     proficiencies: '',
-    languages: 'Common',
+    languages: 'English',
     notes: '',
     deathSaves: { successes: 0, failures: 0 },
-    skillProficiencies: {} // { 'Acrobatics': 'none' | 'proficient' | 'expertise' }
+    skillProficiencies: {}, // { 'Acrobatics': 'none' | 'proficient' | 'expertise' }
+    inventory: [], // { id, name, quantity, weight, notes, equipped }
+    currency: { credits: 0 }
   });
 
   const initializeCharacterResources = (character) => {
@@ -634,6 +638,48 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
     setPlayerCharacter(p => ({ ...p, deathSaves: { successes: 0, failures: 0 } }));
   };
 
+  // ==================== INVENTORY ====================
+  const addInventoryItem = () => {
+    if (!newInventoryItem.name.trim()) return;
+    const item = {
+      id: Date.now(),
+      name: newInventoryItem.name.trim(),
+      quantity: parseInt(newInventoryItem.quantity) || 1,
+      weight: parseFloat(newInventoryItem.weight) || 0,
+      notes: newInventoryItem.notes.trim(),
+      equipped: false
+    };
+    setPlayerCharacter(p => ({ ...p, inventory: [...(p.inventory || []), item] }));
+    setNewInventoryItem({ name: '', quantity: 1, weight: 0, notes: '' });
+    setAddingInventoryItem(false);
+  };
+
+  const removeInventoryItem = (id) => {
+    setPlayerCharacter(p => ({ ...p, inventory: (p.inventory || []).filter(i => i.id !== id) }));
+  };
+
+  const updateInventoryItem = (id, field, value) => {
+    setPlayerCharacter(p => ({
+      ...p,
+      inventory: (p.inventory || []).map(i => i.id === id ? { ...i, [field]: value } : i)
+    }));
+  };
+
+  const toggleEquipped = (id) => {
+    setPlayerCharacter(p => ({
+      ...p,
+      inventory: (p.inventory || []).map(i => i.id === id ? { ...i, equipped: !i.equipped } : i)
+    }));
+  };
+
+  const updateCurrency = (amount) => {
+    setPlayerCharacter(p => ({ ...p, currency: { ...p.currency, credits: Math.max(0, parseInt(amount) || 0) } }));
+  };
+
+  const getTotalWeight = () => {
+    return (playerCharacter.inventory || []).reduce((sum, i) => sum + (i.weight * i.quantity), 0);
+  };
+
   // ==================== EXIT ====================
   const exitPlayerMode = () => {
     setCurrentView('main');
@@ -673,6 +719,8 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
             <span className="text-xl font-bold tracking-widest" style={{textShadow: '0 0 20px rgba(255,0,255,0.5)', color: '#ff00ff'}}>COMBAT OPS</span>
           ) : currentView === 'config' ? (
             <span className="text-xl font-bold tracking-widest" style={{textShadow: '0 0 20px rgba(0,255,255,0.5)', color: '#00ffff'}}>CONFIG</span>
+          ) : currentView === 'inventory' ? (
+            <span className="text-xl font-bold tracking-widest" style={{textShadow: '0 0 20px rgba(255,191,0,0.5)', color: '#ffbf00'}}>INVENTORY</span>
           ) : playerCharacter ? (
             <div>
               <span className="text-gray-400 font-mono text-sm">Lvl {playerCharacter.level || getPlayerLevel()} {playerCharacter.origin} </span>
@@ -1325,6 +1373,147 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
             <textarea value={playerCharacter.notes || ''} onChange={(e) => setPlayerCharacter(p => ({ ...p, notes: e.target.value }))} className="w-full bg-gray-800 border border-gray-600 text-gray-300 font-mono text-sm resize-none h-24 p-2" placeholder="Character notes, backstory, goals..."></textarea>
           </div>
         </div>
+      ) : currentView === 'inventory' ? (
+        /* ==================== INVENTORY VIEW ==================== */
+        <div className="flex-1 flex flex-col gap-3 overflow-auto hide-scrollbar">
+          {/* Inventory Header */}
+          <div className="flex gap-2 mb-1">
+            <button onClick={() => setCurrentView('main')} className="px-3 py-1 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm hover:border-amber-500/50">◀ BACK</button>
+            <div className="flex-1" />
+            <div className="flex items-center gap-2 bg-gray-800/50 border border-amber-500/30 px-3 py-1 rounded">
+              <span className="text-amber-400 font-mono text-sm">¢</span>
+              <input
+                type="number"
+                value={playerCharacter.currency?.credits || 0}
+                onChange={(e) => updateCurrency(e.target.value)}
+                className="w-24 bg-gray-900 border border-amber-500/30 text-amber-300 px-2 py-0.5 font-mono text-sm text-right"
+              />
+            </div>
+          </div>
+
+          {/* Weight Summary */}
+          <div className="flex items-center justify-between bg-gray-900/50 border border-gray-600 px-3 py-2 rounded">
+            <span className="text-gray-400 font-mono text-sm">TOTAL WEIGHT</span>
+            <span className="text-gray-300 font-mono text-lg">{getTotalWeight().toFixed(1)} lbs</span>
+          </div>
+
+          {/* Add Item Button/Form */}
+          {addingInventoryItem ? (
+            <div className="bg-gray-800/50 border border-amber-500/50 p-3 rounded">
+              <div className="grid grid-cols-6 gap-2 mb-2">
+                <input
+                  type="text"
+                  placeholder="Item name..."
+                  value={newInventoryItem.name}
+                  onChange={(e) => setNewInventoryItem(i => ({ ...i, name: e.target.value }))}
+                  className="col-span-3 bg-gray-900 border border-amber-500/30 text-amber-300 px-2 py-1 font-mono text-sm"
+                  autoFocus
+                  onKeyDown={(e) => e.key === 'Enter' && addInventoryItem()}
+                />
+                <input
+                  type="number"
+                  placeholder="Qty"
+                  value={newInventoryItem.quantity}
+                  onChange={(e) => setNewInventoryItem(i => ({ ...i, quantity: e.target.value }))}
+                  className="bg-gray-900 border border-amber-500/30 text-amber-300 px-2 py-1 font-mono text-sm text-center"
+                  min={1}
+                />
+                <input
+                  type="number"
+                  placeholder="Weight"
+                  value={newInventoryItem.weight}
+                  onChange={(e) => setNewInventoryItem(i => ({ ...i, weight: e.target.value }))}
+                  className="bg-gray-900 border border-amber-500/30 text-amber-300 px-2 py-1 font-mono text-sm text-center"
+                  step={0.1}
+                  min={0}
+                />
+                <div className="flex gap-1">
+                  <button onClick={addInventoryItem} className="flex-1 bg-amber-500/20 border border-amber-400 text-amber-300 font-mono text-xs">ADD</button>
+                  <button onClick={() => { setAddingInventoryItem(false); setNewInventoryItem({ name: '', quantity: 1, weight: 0, notes: '' }); }} className="px-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-xs">×</button>
+                </div>
+              </div>
+              <textarea
+                placeholder="Notes (optional)..."
+                value={newInventoryItem.notes}
+                onChange={(e) => setNewInventoryItem(i => ({ ...i, notes: e.target.value }))}
+                className="w-full bg-gray-900 border border-amber-500/30 text-gray-300 px-2 py-1 font-mono text-sm resize-none h-12"
+              />
+            </div>
+          ) : (
+            <button
+              onClick={() => setAddingInventoryItem(true)}
+              className="py-2 bg-amber-900/30 border border-amber-500/50 text-amber-300 font-mono text-sm hover:bg-amber-500/20 hover:border-amber-400 transition-all"
+            >
+              + ADD ITEM
+            </button>
+          )}
+
+          {/* Inventory List */}
+          <div className="flex-1 flex flex-col gap-1 overflow-auto">
+            {(playerCharacter.inventory || []).length > 0 ? (
+              <>
+                {/* Equipped Items */}
+                {(playerCharacter.inventory || []).filter(i => i.equipped).length > 0 && (
+                  <div className="mb-2">
+                    <div className="text-green-400 font-mono text-xs mb-1">EQUIPPED</div>
+                    {(playerCharacter.inventory || []).filter(i => i.equipped).map(item => (
+                      <div key={item.id} className="flex items-center gap-2 bg-green-900/20 border border-green-500/30 px-3 py-2 rounded mb-1">
+                        <button onClick={() => toggleEquipped(item.id)} className="w-5 h-5 rounded border-2 border-green-400 bg-green-500 flex items-center justify-center text-white text-xs">✓</button>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-green-300 font-mono text-sm font-bold">{item.name}</span>
+                            {item.quantity > 1 && <span className="text-green-400/70 font-mono text-xs">×{item.quantity}</span>}
+                            {item.weight > 0 && <span className="text-gray-500 font-mono text-xs">{(item.weight * item.quantity).toFixed(1)} lbs</span>}
+                          </div>
+                          {item.notes && <div className="text-gray-400 font-mono text-xs">{item.notes}</div>}
+                        </div>
+                        <button onClick={() => removeInventoryItem(item.id)} className="text-gray-500 hover:text-red-400 font-mono text-sm px-1">×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Unequipped Items */}
+                {(playerCharacter.inventory || []).filter(i => !i.equipped).length > 0 && (
+                  <div>
+                    {(playerCharacter.inventory || []).filter(i => i.equipped).length > 0 && (
+                      <div className="text-gray-400 font-mono text-xs mb-1">STOWED</div>
+                    )}
+                    {(playerCharacter.inventory || []).filter(i => !i.equipped).map(item => (
+                      <div key={item.id} className="flex items-center gap-2 bg-gray-800/50 border border-gray-600 px-3 py-2 rounded mb-1 hover:border-amber-500/30 transition-all">
+                        <button onClick={() => toggleEquipped(item.id)} className="w-5 h-5 rounded border-2 border-gray-600 bg-gray-800 hover:border-green-500/50"></button>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-amber-300 font-mono text-sm">{item.name}</span>
+                            {item.quantity > 1 && <span className="text-amber-400/70 font-mono text-xs">×{item.quantity}</span>}
+                            {item.weight > 0 && <span className="text-gray-500 font-mono text-xs">{(item.weight * item.quantity).toFixed(1)} lbs</span>}
+                          </div>
+                          {item.notes && <div className="text-gray-400 font-mono text-xs">{item.notes}</div>}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => updateInventoryItem(item.id, 'quantity', Math.max(1, item.quantity - 1))} className="w-6 h-6 bg-gray-700 border border-gray-600 text-gray-400 font-mono text-sm hover:border-amber-500/50">-</button>
+                          <span className="text-gray-400 font-mono text-sm w-6 text-center">{item.quantity}</span>
+                          <button onClick={() => updateInventoryItem(item.id, 'quantity', item.quantity + 1)} className="w-6 h-6 bg-gray-700 border border-gray-600 text-gray-400 font-mono text-sm hover:border-amber-500/50">+</button>
+                        </div>
+                        <button onClick={() => removeInventoryItem(item.id)} className="text-gray-500 hover:text-red-400 font-mono text-sm px-1">×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex-1 flex items-center justify-center">
+                <span className="text-gray-500 font-mono text-sm">No items in inventory</span>
+              </div>
+            )}
+          </div>
+
+          {/* Bottom Actions */}
+          <div className="flex gap-2 mt-auto">
+            <button onClick={() => setCurrentView('combat')} className="flex-1 py-2 bg-red-900/30 border border-red-500/50 text-red-300 font-mono text-sm hover:bg-red-500/20">⚔ COMBAT</button>
+            <button onClick={() => setCurrentView('main')} className="flex-1 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm hover:border-cyan-500/50">◀ MAIN</button>
+          </div>
+        </div>
       ) : (
         /* ==================== MAIN VIEW (GAMEPLAY) ==================== */
         <div className="flex-1 flex flex-col gap-2 overflow-auto hide-scrollbar">
@@ -1495,7 +1684,7 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
                           disabled={!available}
                           className={`flex-1 py-2 border font-mono text-sm transition-all ${available ? `${colors.bg}/30 ${colors.border} ${colors.text} hover:${colors.bg}/50` : 'bg-gray-900/50 border-gray-700 text-gray-600 cursor-not-allowed'}`}
                         >
-                          {available ? '⚡ USE' : 'NO RESOURCES'}
+                          {available ? 'USE' : 'NO RESOURCES'}
                         </button>
                         <button
                           onClick={() => setOpenSkillIndex(null)}
@@ -1545,7 +1734,8 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
 
           {/* Bottom Actions */}
           <div className="flex gap-2">
-            <button onClick={() => setCurrentView('combat')} className="flex-1 py-2 bg-red-900/30 border border-red-500/50 text-red-300 font-mono text-sm hover:bg-red-500/20 hover:border-red-400 transition-all">⚔ COMBAT</button>
+            <button onClick={() => setCurrentView('combat')} className="flex-1 py-2 bg-red-900/30 border border-red-500/50 text-red-300 font-mono text-sm hover:bg-red-500/20 hover:border-red-400 transition-all">COMBAT</button>
+            <button onClick={() => setCurrentView('inventory')} className="flex-1 py-2 bg-amber-900/30 border border-amber-500/50 text-amber-300 font-mono text-sm hover:bg-amber-500/20 hover:border-amber-400 transition-all">GEAR</button>
             <button onClick={shortRest} className="flex-1 py-2 bg-cyan-900/30 border border-cyan-500/50 text-cyan-300 font-mono text-sm hover:bg-cyan-500/20">SHORT REST</button>
             <button onClick={longRest} className="flex-1 py-2 bg-fuchsia-900/30 border border-fuchsia-500/50 text-fuchsia-300 font-mono text-sm hover:bg-fuchsia-500/20">LONG REST</button>
           </div>
