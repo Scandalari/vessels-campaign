@@ -83,36 +83,7 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
     return result;
   };
 
-  const getClassResources = (char) => {
-    const character = char || playerCharacter;
-    if (!character) return [];
-
-    const resources = [];
-    const mods = {};
-    ABILITIES.forEach(a => { mods[a] = getAbilityMod(character.abilities[a]); });
-
-    character.classes.forEach(cls => {
-      const templates = CLASS_RESOURCE_TEMPLATES[cls.name] || [];
-      templates.forEach(template => {
-        if (template.minLevel && cls.level < template.minLevel) return;
-
-        const max = template.getMax(cls.level, mods);
-        const shortRest = typeof template.shortRest === 'function' ? template.shortRest(cls.level) : template.shortRest;
-
-        resources.push({
-          name: template.name,
-          ability: template.ability,
-          max,
-          used: 0,
-          shortRest,
-          isPool: template.isPool || false,
-          className: cls.name
-        });
-      });
-    });
-
-    return resources;
-  };
+  // Class resources are now managed manually via Custom Resources
 
   const createDefaultPlayerCharacter = (partyMember) => ({
     id: partyMember?.id || Date.now(),
@@ -149,9 +120,7 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
       spellSlots[key] = { used: 0, max: s.max, level: s.level, isPact: s.isPact || false };
     });
 
-    const classResources = getClassResources(character);
-
-    return { ...character, spellSlots, classResources };
+    return { ...character, spellSlots, classResources: [] };
   };
 
   // ==================== CHARACTER SELECTION ====================
@@ -303,9 +272,6 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
       });
       updated.spellSlots = spellSlots;
       
-      // Recalculate class resources
-      updated.classResources = getClassResources(updated);
-      
       return updated;
     });
   };
@@ -329,9 +295,6 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
       });
       updated.spellSlots = spellSlots;
       
-      // Recalculate class resources
-      updated.classResources = getClassResources(updated);
-      
       return updated;
     });
   };
@@ -354,9 +317,6 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
         spellSlots[key] = { used: Math.min(existingUsed, s.max), max: s.max, level: s.level, isPact: s.isPact || false };
       });
       updated.spellSlots = spellSlots;
-      
-      // Recalculate class resources
-      updated.classResources = getClassResources(updated);
       
       return updated;
     });
