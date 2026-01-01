@@ -13,7 +13,7 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
   const [addingResource, setAddingResource] = useState(false);
   const [newResource, setNewResource] = useState({ name: '', max: 1, color: 'cyan', shortRest: false, isPool: false });
   const [addingSkill, setAddingSkill] = useState(false);
-  const [newSkill, setNewSkill] = useState({ name: '', linkedResource: '', cost: 1 });
+  const [newSkill, setNewSkill] = useState({ name: '', linkedResource: '', cost: 1, color: 'purple' });
   const [actionEconomy, setActionEconomy] = useState({ Action: true, Bonus: true, Reaction: true, Movement: true, Object: true });
   const [playerConcentration, setPlayerConcentration] = useState(null);
   const [damageInput, setDamageInput] = useState('');
@@ -225,6 +225,13 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
     });
   };
 
+  const removeClassResource = (index) => {
+    setPlayerCharacter(p => ({
+      ...p,
+      classResources: (p.classResources || []).filter((_, i) => i !== index)
+    }));
+  };
+
   // ==================== FEATURES ====================
   const addFeature = (name, description) => {
     setPlayerCharacter(p => ({
@@ -410,11 +417,15 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
 
   const addSkill = () => {
     if (!newSkill.name.trim() || !newSkill.linkedResource) return;
+    const [type] = newSkill.linkedResource.split('-');
+    const skillToAdd = { ...newSkill, cost: parseInt(newSkill.cost) || 1 };
+    // Only store color for spell/pact slots
+    if (type !== 'spell' && type !== 'pact') delete skillToAdd.color;
     setPlayerCharacter(p => ({
       ...p,
-      skills: [...(p.skills || []), { ...newSkill, cost: parseInt(newSkill.cost) || 1 }]
+      skills: [...(p.skills || []), skillToAdd]
     }));
-    setNewSkill({ name: '', linkedResource: '', cost: 1 });
+    setNewSkill({ name: '', linkedResource: '', cost: 1, color: 'purple' });
     setAddingSkill(false);
   };
 
@@ -490,6 +501,25 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
     const resources = getAvailableResources();
     const found = resources.find(r => r.key === linkedResource);
     return found?.label || linkedResource;
+  };
+
+  const getSkillColor = (skill) => {
+    if (!skill?.linkedResource) return getColorById('gray');
+    const [type, id] = skill.linkedResource.split('-');
+    
+    if (type === 'spell' || type === 'pact') {
+      // Use skill's stored color, default to purple
+      return getColorById(skill.color || 'purple');
+    } else if (type === 'custom') {
+      const res = playerCharacter.customResources?.[parseInt(id)];
+      return getColorById(res?.color || 'cyan');
+    } else if (type === 'class') {
+      const res = playerCharacter.classResources?.[parseInt(id)];
+      const abilityColors = ABILITY_COLORS[res?.ability] || ABILITY_COLORS.STR;
+      // Map ABILITY_COLORS format to RESOURCE_COLORS format
+      return { bg: abilityColors.bg, border: abilityColors.border, text: abilityColors.text, bgUsed: 'bg-gray-700/50' };
+    }
+    return getColorById('gray');
   };
 
   // ==================== RESTING ====================
@@ -769,17 +799,18 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
 
           {/* Skills */}
           {(playerCharacter.skills || []).length > 0 && (
-            <div className="bg-gray-900/50 border border-green-500/30 p-2 rounded">
-              <span className="text-green-400 font-mono text-sm block mb-2">SKILLS</span>
+            <div className="bg-gray-900/50 border border-gray-600 p-2 rounded">
+              <span className="text-gray-400 font-mono text-sm block mb-2">SKILLS</span>
               <div className="flex flex-wrap gap-2">
                 {(playerCharacter.skills || []).map((skill, i) => {
                   const available = getSkillAvailable(skill);
+                  const colors = getSkillColor(skill);
                   return (
                     <button
                       key={i}
                       onClick={() => available && useSkill(i)}
                       disabled={!available}
-                      className={`px-3 py-2 border font-mono text-sm transition-all ${available ? 'bg-green-900/30 border-green-500/50 text-green-300 hover:bg-green-500/30 hover:border-green-400' : 'bg-gray-900/50 border-gray-700 text-gray-600 cursor-not-allowed'}`}
+                      className={`px-3 py-2 border font-mono text-sm transition-all ${available ? `${colors.bgUsed || 'bg-gray-900/30'} ${colors.border}/50 ${colors.text} hover:${colors.bg}/30 hover:${colors.border}` : 'bg-gray-900/50 border-gray-700 text-gray-600 cursor-not-allowed'}`}
                       title={`${skill.name} - Uses ${getSkillResourceLabel(skill.linkedResource)}${skill.cost > 1 ? ` ×${skill.cost}` : ''}`}
                     >
                       {skill.name}
@@ -989,12 +1020,29 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
                 </div>
               </div>
             )}
-            {(playerCharacter.customResources || []).length > 0 ? (
+            {((playerCharacter.customResources || []).length > 0 || (playerCharacter.classResources || []).length > 0) ? (
               <div className="grid grid-cols-3 gap-2">
+                {(playerCharacter.classResources || []).map((res, i) => {
+                  const colors = ABILITY_COLORS[res.ability] || ABILITY_COLORS.STR;
+                  return (
+                    <div key={`class-${i}`} className={`bg-gray-800/50 border ${colors.border}/50 p-2 rounded`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className={`${colors.text} font-mono text-sm`}>{res.name}</span>
+                        <button onClick={() => removeClassResource(i)} className="text-gray-500 hover:text-red-400 font-mono text-xs">×</button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-500 font-mono text-xs">Max: {res.max}</span>
+                        {res.shortRest && <span className="text-gray-500 text-xs">(SR)</span>}
+                        {res.isPool && <span className="text-gray-500 text-xs">(Pool)</span>}
+                        <span className="text-gray-600 text-xs italic ml-auto">(legacy)</span>
+                      </div>
+                    </div>
+                  );
+                })}
                 {(playerCharacter.customResources || []).map((res, i) => {
                   const colors = getColorById(res.color);
                   return (
-                    <div key={i} className={`bg-gray-800/50 border ${colors.border}/50 p-2 rounded`}>
+                    <div key={`custom-${i}`} className={`bg-gray-800/50 border ${colors.border}/50 p-2 rounded`}>
                       <div className="flex items-center justify-between mb-1">
                         <span className={`${colors.text} font-mono text-sm`}>{res.name}</span>
                         <button onClick={() => removeCustomResource(i)} className="text-gray-500 hover:text-red-400 font-mono text-xs">×</button>
@@ -1033,27 +1081,44 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
                   </select>
                   <div className="flex gap-1">
                     <button onClick={addSkill} className="flex-1 px-2 py-1 bg-green-500/20 border border-green-400 text-green-300 font-mono text-xs">ADD</button>
-                    <button onClick={() => { setAddingSkill(false); setNewSkill({ name: '', linkedResource: '', cost: 1 }); }} className="px-2 py-1 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-xs">×</button>
+                    <button onClick={() => { setAddingSkill(false); setNewSkill({ name: '', linkedResource: '', cost: 1, color: 'purple' }); }} className="px-2 py-1 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-xs">×</button>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-gray-500 font-mono text-xs">Cost:</span>
                   <input type="number" value={newSkill.cost} onChange={(e) => setNewSkill(s => ({ ...s, cost: parseInt(e.target.value) || 1 }))} className="w-12 bg-gray-900 border border-green-500/30 text-green-300 px-1 py-0.5 text-center font-mono text-sm" min={1} />
                   <span className="text-gray-500 font-mono text-xs">resource(s) per use</span>
+                  {newSkill.linkedResource && (newSkill.linkedResource.startsWith('spell') || newSkill.linkedResource.startsWith('pact')) && (
+                    <>
+                      <span className="text-gray-600 mx-1">|</span>
+                      <span className="text-gray-500 font-mono text-xs">Color:</span>
+                      <div className="flex gap-1">
+                        {RESOURCE_COLORS.map(c => (
+                          <button key={c.id} onClick={() => setNewSkill(s => ({ ...s, color: c.id }))} className={`w-4 h-4 rounded-full border-2 transition-all ${c.bg} ${newSkill.color === c.id ? 'ring-2 ring-white ring-offset-1 ring-offset-gray-900' : 'border-transparent opacity-60 hover:opacity-100'}`} />
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}
             {(playerCharacter.skills || []).length > 0 ? (
               <div className="grid grid-cols-2 gap-2">
-                {(playerCharacter.skills || []).map((skill, i) => (
-                  <div key={i} className="bg-gray-800/50 border border-green-500/30 p-2 rounded flex items-center justify-between">
-                    <div>
-                      <span className="text-green-300 font-mono text-sm">{skill.name}</span>
-                      <div className="text-gray-500 font-mono text-xs">{getSkillResourceLabel(skill.linkedResource)}{skill.cost > 1 ? ` ×${skill.cost}` : ''}</div>
+                {(playerCharacter.skills || []).map((skill, i) => {
+                  const colors = getSkillColor(skill);
+                  return (
+                    <div key={i} className={`bg-gray-800/50 border ${colors.border}/30 p-2 rounded flex items-center justify-between`}>
+                      <div className="flex items-center gap-2">
+                        <div className={`w-3 h-3 rounded-full ${colors.bg}`} />
+                        <div>
+                          <span className={`${colors.text} font-mono text-sm`}>{skill.name}</span>
+                          <div className="text-gray-500 font-mono text-xs">{getSkillResourceLabel(skill.linkedResource)}{skill.cost > 1 ? ` ×${skill.cost}` : ''}</div>
+                        </div>
+                      </div>
+                      <button onClick={() => removeSkill(i)} className="text-gray-500 hover:text-red-400 font-mono text-xs px-2">×</button>
                     </div>
-                    <button onClick={() => removeSkill(i)} className="text-gray-500 hover:text-red-400 font-mono text-xs px-2">×</button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="text-gray-500 font-mono text-sm">No skills added. Add skills that consume spell slots or resources.</div>
@@ -1209,16 +1274,17 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
 
           {/* Skills */}
           {(playerCharacter.skills || []).length > 0 && (
-            <div className="bg-gray-900/50 border border-green-500/30 p-2 rounded">
+            <div className="bg-gray-900/50 border border-gray-600 p-2 rounded">
               <div className="flex flex-wrap gap-2">
                 {(playerCharacter.skills || []).map((skill, i) => {
                   const available = getSkillAvailable(skill);
+                  const colors = getSkillColor(skill);
                   return (
                     <button
                       key={i}
                       onClick={() => available && useSkill(i)}
                       disabled={!available}
-                      className={`px-3 py-1.5 border font-mono text-sm transition-all ${available ? 'bg-green-900/30 border-green-500/50 text-green-300 hover:bg-green-500/30 hover:border-green-400' : 'bg-gray-900/50 border-gray-700 text-gray-600 cursor-not-allowed'}`}
+                      className={`px-3 py-1.5 border font-mono text-sm transition-all ${available ? `${colors.bgUsed || 'bg-gray-900/30'} ${colors.border}/50 ${colors.text} hover:${colors.bg}/30 hover:${colors.border}` : 'bg-gray-900/50 border-gray-700 text-gray-600 cursor-not-allowed'}`}
                       title={`Uses ${getSkillResourceLabel(skill.linkedResource)}${skill.cost > 1 ? ` ×${skill.cost}` : ''}`}
                     >
                       {skill.name}
