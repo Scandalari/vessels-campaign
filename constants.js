@@ -29,8 +29,13 @@ var CASTER_TYPES = {
   'Bard': 'full', 'Cleric': 'full', 'Druid': 'full', 'Sorcerer': 'full', 'Wizard': 'full',
   'Artificer': 'half', 'Paladin': 'half', 'Ranger': 'half',
   'Warlock': 'warlock',
-  'Fighter': 'third', 'Rogue': 'third', // Only certain subclasses
-  'Barbarian': 'none', 'Monk': 'none'
+  'Barbarian': 'none', 'Monk': 'none', 'Fighter': 'none', 'Rogue': 'none'
+};
+
+// Subclasses that grant spellcasting (checked before class type)
+var SUBCLASS_CASTER_TYPES = {
+  'Eldritch Knight': 'third',
+  'Arcane Trickster': 'third'
 };
 
 // ==================== CLASS RESOURCE TEMPLATES ====================

@@ -39,7 +39,8 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
     let warlockLevel = 0;
 
     character.classes.forEach(c => {
-      const type = CASTER_TYPES[c.name];
+      // Check subclass first (e.g. Eldritch Knight), then fall back to class
+      const type = (c.subclass && SUBCLASS_CASTER_TYPES[c.subclass]) || CASTER_TYPES[c.name];
       if (type === 'full') casterLevel += c.level;
       else if (type === 'half' && c.level >= 2) casterLevel += Math.floor(c.level / 2);
       else if (type === 'third' && c.level >= 3) casterLevel += Math.floor(c.level / 3);
