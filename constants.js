@@ -34,26 +34,36 @@ var CASTER_TYPES = {
 };
 
 // ==================== CLASS RESOURCE TEMPLATES ====================
+// Ability colors: STR=red, DEX=green, CON=orange, INT=blue, WIS=white, CHA=yellow
+var ABILITY_COLORS = {
+  STR: { bg: 'bg-red-500', border: 'border-red-400', text: 'text-red-300', bgUsed: 'bg-red-900/50' },
+  DEX: { bg: 'bg-green-500', border: 'border-green-400', text: 'text-green-300', bgUsed: 'bg-green-900/50' },
+  CON: { bg: 'bg-orange-500', border: 'border-orange-400', text: 'text-orange-300', bgUsed: 'bg-orange-900/50' },
+  INT: { bg: 'bg-blue-500', border: 'border-blue-400', text: 'text-blue-300', bgUsed: 'bg-blue-900/50' },
+  WIS: { bg: 'bg-gray-200', border: 'border-gray-300', text: 'text-gray-200', bgUsed: 'bg-gray-700/50' },
+  CHA: { bg: 'bg-yellow-500', border: 'border-yellow-400', text: 'text-yellow-300', bgUsed: 'bg-yellow-900/50' }
+};
+
 var CLASS_RESOURCE_TEMPLATES = {
-  'Barbarian': [{ name: 'Rage', maxFormula: 'level < 3 ? 2 : level < 6 ? 3 : level < 12 ? 4 : level < 17 ? 5 : 6', shortRest: false }],
-  'Bard': [{ name: 'Bardic Inspiration', maxFormula: 'Math.max(1, chaMod)', shortRest: 'level >= 5' }],
-  'Cleric': [{ name: 'Channel Divinity', maxFormula: 'level < 6 ? 1 : level < 18 ? 2 : 3', shortRest: true }],
-  'Druid': [{ name: 'Wild Shape', maxFormula: '2', shortRest: true }],
+  'Barbarian': [{ name: 'Rage', ability: 'STR', getMax: (level) => level < 3 ? 2 : level < 6 ? 3 : level < 12 ? 4 : level < 17 ? 5 : 6, shortRest: false }],
+  'Bard': [{ name: 'Inspiration', ability: 'CHA', getMax: (level, mods) => Math.max(1, mods.CHA), shortRest: (level) => level >= 5 }],
+  'Cleric': [{ name: 'Channel Divinity', ability: 'WIS', getMax: (level) => level < 6 ? 1 : level < 18 ? 2 : 3, shortRest: true }],
+  'Druid': [{ name: 'Wild Shape', ability: 'WIS', getMax: () => 2, shortRest: true }],
   'Fighter': [
-    { name: 'Second Wind', maxFormula: '1', shortRest: true },
-    { name: 'Action Surge', maxFormula: 'level < 17 ? 1 : 2', shortRest: true, minLevel: 2 }
+    { name: 'Second Wind', ability: 'CON', getMax: () => 1, shortRest: true },
+    { name: 'Action Surge', ability: 'STR', getMax: (level) => level < 17 ? 1 : 2, shortRest: true, minLevel: 2 }
   ],
-  'Monk': [{ name: 'Ki', maxFormula: 'level', shortRest: true, minLevel: 2 }],
+  'Monk': [{ name: 'Ki', ability: 'WIS', getMax: (level) => level, shortRest: true, minLevel: 2 }],
   'Paladin': [
-    { name: 'Lay on Hands', maxFormula: 'level * 5', shortRest: false },
-    { name: 'Channel Divinity', maxFormula: '1', shortRest: true, minLevel: 3 }
+    { name: 'Lay on Hands', ability: 'CHA', getMax: (level) => level * 5, shortRest: false, isPool: true },
+    { name: 'Channel Divinity', ability: 'CHA', getMax: () => 1, shortRest: true, minLevel: 3 }
   ],
-  'Ranger': [],
+  'Ranger': [{ name: 'Favored Foe', ability: 'WIS', getMax: (level) => level < 6 ? 2 : level < 14 ? 3 : 4, shortRest: false, minLevel: 1 }],
   'Rogue': [],
-  'Sorcerer': [{ name: 'Sorcery Points', maxFormula: 'level', shortRest: false, minLevel: 2 }],
+  'Sorcerer': [{ name: 'Sorcery Points', ability: 'CHA', getMax: (level) => level, shortRest: false, minLevel: 2 }],
   'Warlock': [],
-  'Wizard': [{ name: 'Arcane Recovery', maxFormula: 'Math.ceil(level / 2)', shortRest: false }],
-  'Artificer': [{ name: 'Flash of Genius', maxFormula: 'Math.max(1, intMod)', shortRest: false, minLevel: 7 }]
+  'Wizard': [{ name: 'Arcane Recovery', ability: 'INT', getMax: (level) => Math.ceil(level / 2), shortRest: false, isPool: true }],
+  'Artificer': [{ name: 'Flash of Genius', ability: 'INT', getMax: (level, mods) => Math.max(1, mods.INT), shortRest: true, minLevel: 7 }]
 };
 
 // ==================== ACTION ECONOMY ====================

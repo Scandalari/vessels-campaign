@@ -112,24 +112,64 @@
         if (!character) return [];
         let casterLevel = 0;
         let isWarlock = false;
+        let warlockLevel = 0;
         
         character.classes.forEach(c => {
           const type = CASTER_TYPES[c.name];
           if (type === 'full') casterLevel += c.level;
           else if (type === 'half' && c.level >= 2) casterLevel += Math.floor(c.level / 2);
           else if (type === 'third' && c.level >= 3) casterLevel += Math.floor(c.level / 3);
-          else if (type === 'warlock') isWarlock = true;
+          else if (type === 'warlock') { isWarlock = true; warlockLevel = c.level; }
         });
 
-        if (isWarlock && character.classes.length === 1) {
-          const warlockLevel = character.classes[0].level;
-          const [slots, slotLevel] = WARLOCK_SLOTS[Math.min(warlockLevel - 1, 19)];
-          return [{ level: slotLevel, max: slots, type: 'pact' }];
+        const result = [];
+        
+        // Regular spell slots
+        if (casterLevel > 0) {
+          const slots = FULL_CASTER_SLOTS[Math.min(casterLevel - 1, 19)];
+          slots.forEach((max, i) => {
+            if (max > 0) result.push({ level: i + 1, max, type: 'standard' });
+          });
+        }
+        
+        // Warlock pact slots (separate)
+        if (isWarlock) {
+          const [pactSlots, pactLevel] = WARLOCK_SLOTS[Math.min(warlockLevel - 1, 19)];
+          result.push({ level: pactLevel, max: pactSlots, type: 'pact', isPact: true });
         }
 
-        if (casterLevel === 0) return [];
-        const slots = FULL_CASTER_SLOTS[Math.min(casterLevel - 1, 19)];
-        return slots.map((max, i) => ({ level: i + 1, max, type: 'standard' })).filter(s => s.max > 0);
+        return result;
+      };
+
+      const getClassResources = (char) => {
+        const character = char || playerCharacter;
+        if (!character) return [];
+        
+        const resources = [];
+        const mods = {};
+        ABILITIES.forEach(a => { mods[a] = getAbilityMod(character.abilities[a]); });
+        
+        character.classes.forEach(cls => {
+          const templates = CLASS_RESOURCE_TEMPLATES[cls.name] || [];
+          templates.forEach(template => {
+            if (template.minLevel && cls.level < template.minLevel) return;
+            
+            const max = template.getMax(cls.level, mods);
+            const shortRest = typeof template.shortRest === 'function' ? template.shortRest(cls.level) : template.shortRest;
+            
+            resources.push({
+              name: template.name,
+              ability: template.ability,
+              max,
+              used: 0,
+              shortRest,
+              isPool: template.isPool || false,
+              className: cls.name
+            });
+          });
+        });
+        
+        return resources;
       };
 
       const createDefaultPlayerCharacter = (partyMember) => ({
@@ -153,17 +193,25 @@
         deathSaves: { successes: 0, failures: 0 }
       });
 
-      const initializeSpellSlots = (character) => {
+      const initializeCharacterResources = (character) => {
+        // Initialize spell slots
         const slots = getPlayerSpellSlots(character);
         const spellSlots = {};
-        slots.forEach(s => { spellSlots[s.level] = { used: 0, max: s.max }; });
-        return { ...character, spellSlots };
+        slots.forEach(s => {
+          const key = s.isPact ? `pact-${s.level}` : s.level;
+          spellSlots[key] = { used: 0, max: s.max, level: s.level, isPact: s.isPact || false };
+        });
+        
+        // Initialize class resources
+        const classResources = getClassResources(character);
+        
+        return { ...character, spellSlots, classResources };
       };
 
       const selectPartyMember = (member) => {
         const char = createDefaultPlayerCharacter(member);
-        const withSlots = initializeSpellSlots(char);
-        setPlayerCharacter(withSlots);
+        const initialized = initializeCharacterResources(char);
+        setPlayerCharacter(initialized);
         setPlayerSetupStep(null);
       };
 
@@ -228,39 +276,34 @@
         });
       };
 
-      const useResource = (index) => {
+      const useClassResource = (index) => {
         setPlayerCharacter(p => {
-          const res = p.resources[index];
+          const res = p.classResources?.[index];
           if (!res || res.used >= res.max) return p;
-          const newResources = [...p.resources];
+          const newResources = [...p.classResources];
           newResources[index] = { ...res, used: res.used + 1 };
-          return { ...p, resources: newResources };
+          return { ...p, classResources: newResources };
         });
       };
 
-      const restoreResource = (index) => {
+      const restoreClassResource = (index) => {
         setPlayerCharacter(p => {
-          const res = p.resources[index];
+          const res = p.classResources?.[index];
           if (!res || res.used <= 0) return p;
-          const newResources = [...p.resources];
+          const newResources = [...p.classResources];
           newResources[index] = { ...res, used: res.used - 1 };
-          return { ...p, resources: newResources };
+          return { ...p, classResources: newResources };
         });
       };
 
-      const addResource = (name, max, shortRest) => {
-        setPlayerCharacter(p => ({
-          ...p,
-          resources: [...p.resources, { name, max: parseInt(max) || 1, used: 0, shortRest }]
-        }));
-        setAddingResource(false);
-      };
-
-      const removeResource = (index) => {
-        setPlayerCharacter(p => ({
-          ...p,
-          resources: p.resources.filter((_, i) => i !== index)
-        }));
+      const setClassResourcePool = (index, value) => {
+        setPlayerCharacter(p => {
+          const res = p.classResources?.[index];
+          if (!res) return p;
+          const newResources = [...p.classResources];
+          newResources[index] = { ...res, used: Math.max(0, Math.min(res.max, res.max - parseInt(value) || 0)) };
+          return { ...p, classResources: newResources };
+        });
       };
 
       const addFeature = (name, description) => {
@@ -279,24 +322,34 @@
       };
 
       const shortRest = () => {
-        setPlayerCharacter(p => ({
-          ...p,
-          resources: p.resources.map(r => r.shortRest ? { ...r, used: 0 } : r)
-        }));
+        setPlayerCharacter(p => {
+          // Restore warlock pact slots
+          const restoredSlots = { ...p.spellSlots };
+          Object.keys(restoredSlots).forEach(key => {
+            if (restoredSlots[key].isPact) {
+              restoredSlots[key] = { ...restoredSlots[key], used: 0 };
+            }
+          });
+          return {
+            ...p,
+            spellSlots: restoredSlots,
+            classResources: (p.classResources || []).map(r => r.shortRest ? { ...r, used: 0 } : r)
+          };
+        });
         resetActionEconomy();
       };
 
       const longRest = () => {
         setPlayerCharacter(p => {
           const restoredSlots = {};
-          Object.keys(p.spellSlots).forEach(level => {
-            restoredSlots[level] = { ...p.spellSlots[level], used: 0 };
+          Object.keys(p.spellSlots || {}).forEach(key => {
+            restoredSlots[key] = { ...p.spellSlots[key], used: 0 };
           });
           return {
             ...p,
             hp: { ...p.hp, current: p.hp.max, temp: 0 },
             spellSlots: restoredSlots,
-            resources: p.resources.map(r => ({ ...r, used: 0 })),
+            classResources: (p.classResources || []).map(r => ({ ...r, used: 0 })),
             deathSaves: { successes: 0, failures: 0 }
           };
         });
@@ -1226,62 +1279,74 @@
                     })}
                   </div>
 
-                  {/* Spell Slots */}
-                  <div className="bg-gray-900/50 border border-purple-500/30 p-2 rounded">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-purple-400 font-mono text-sm">SPELL SLOTS</span>
-                      <span className="text-gray-500 font-mono text-xs">(click to toggle)</span>
+                  {/* Spell Slots & Class Resources Row */}
+                  <div className="flex gap-2">
+                    {/* Spell Slots - Left */}
+                    <div className="flex-1 bg-gray-900/50 border border-purple-500/30 p-2 rounded">
+                      {Object.keys(playerCharacter.spellSlots || {}).length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {Object.entries(playerCharacter.spellSlots).map(([key, slot]) => (
+                            Array.from({ length: slot.max }).map((_, i) => {
+                              const available = i < slot.max - slot.used;
+                              return (
+                                <button 
+                                  key={`${key}-${i}`} 
+                                  onClick={() => available ? useSpellSlot(key) : restoreSpellSlot(key)} 
+                                  className={`w-7 h-7 rounded-full border-2 font-mono text-xs font-bold flex items-center justify-center transition-all ${
+                                    slot.isPact 
+                                      ? (available ? 'bg-fuchsia-500 border-fuchsia-400 text-white' : 'bg-fuchsia-900/50 border-fuchsia-800 text-fuchsia-600')
+                                      : (available ? 'bg-purple-500 border-purple-400 text-white' : 'bg-purple-900/50 border-purple-800 text-purple-600')
+                                  }`}
+                                  title={slot.isPact ? `Pact Slot (Lvl ${slot.level})` : `Level ${slot.level} Spell Slot`}
+                                >
+                                  {slot.level}
+                                </button>
+                              );
+                            })
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-gray-500 font-mono text-sm">No spellcasting</div>
+                      )}
                     </div>
-                    {Object.keys(playerCharacter.spellSlots).length > 0 ? (
-                      <div className="flex flex-wrap gap-3">
-                        {Object.entries(playerCharacter.spellSlots).map(([level, slot]) => (
-                          <div key={level} className="flex items-center gap-2">
-                            <span className="text-purple-300 font-mono">Lvl {level}:</span>
-                            <div className="flex gap-1">
-                              {Array.from({ length: slot.max }).map((_, i) => (
-                                <button key={i} onClick={() => i < slot.max - slot.used ? useSpellSlot(level) : restoreSpellSlot(level)} className={`w-5 h-5 rounded-full border-2 transition-all ${i < slot.max - slot.used ? 'bg-purple-500 border-purple-400' : 'bg-gray-700 border-gray-600'}`} />
-                              ))}
+
+                    {/* Class Resources - Right */}
+                    {(playerCharacter.classResources || []).length > 0 && (
+                      <div className="flex gap-2">
+                        {(playerCharacter.classResources || []).map((res, i) => {
+                          const colors = ABILITY_COLORS[res.ability] || ABILITY_COLORS.STR;
+                          return (
+                            <div key={i} className={`bg-gray-900/50 border ${colors.border}/30 p-2 rounded`}>
+                              <div className={`${colors.text} font-mono text-xs text-center mb-1`}>{res.name}</div>
+                              {res.isPool ? (
+                                <input 
+                                  type="number" 
+                                  value={res.max - res.used} 
+                                  onChange={(e) => setClassResourcePool(i, e.target.value)}
+                                  className={`w-12 bg-gray-800 border ${colors.border}/30 ${colors.text} px-1 py-0.5 text-center font-mono text-lg`}
+                                  max={res.max}
+                                  min={0}
+                                />
+                              ) : (
+                                <div className="flex gap-1 justify-center">
+                                  {Array.from({ length: res.max }).map((_, j) => {
+                                    const available = j < res.max - res.used;
+                                    return (
+                                      <button 
+                                        key={j} 
+                                        onClick={() => available ? useClassResource(i) : restoreClassResource(i)} 
+                                        className={`w-5 h-5 rounded-full border-2 transition-all ${available ? `${colors.bg} ${colors.border}` : `${colors.bgUsed} border-gray-600`}`}
+                                      />
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
-                    ) : (
-                      <div className="text-gray-500 font-mono text-sm">No spellcasting</div>
                     )}
                   </div>
-
-                  {/* Class Resources */}
-                  {(playerCharacter.resources.length > 0 || addingResource) && (
-                    <div className="bg-gray-900/50 border border-orange-500/30 p-2 rounded">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-orange-400 font-mono text-sm">CLASS RESOURCES</span>
-                        <button onClick={() => setAddingResource(true)} className="px-2 py-0.5 bg-gray-800/50 border border-orange-500/30 text-orange-300 font-mono text-xs hover:border-orange-400">+ ADD</button>
-                      </div>
-                      {addingResource && (
-                        <div className="flex gap-2 items-center mb-2">
-                          <input type="text" id="newResName" placeholder="Name" className="flex-1 bg-gray-800 border border-orange-500/30 text-orange-300 px-2 py-1 font-mono text-sm" autoFocus />
-                          <input type="number" id="newResMax" placeholder="Max" className="w-16 bg-gray-800 border border-orange-500/30 text-orange-300 px-2 py-1 font-mono text-sm text-center" defaultValue="1" />
-                          <label className="flex items-center gap-1 text-gray-400 font-mono text-xs"><input type="checkbox" id="newResSR" /> SR</label>
-                          <button onClick={() => { const name = document.getElementById('newResName').value; const max = document.getElementById('newResMax').value; const sr = document.getElementById('newResSR').checked; if (name.trim()) addResource(name.trim(), max, sr); }} className="px-2 py-1 bg-orange-500/20 border border-orange-400 text-orange-300 font-mono text-xs">ADD</button>
-                          <button onClick={() => setAddingResource(false)} className="px-2 py-1 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-xs">×</button>
-                        </div>
-                      )}
-                      <div className="flex flex-wrap gap-3">
-                        {playerCharacter.resources.map((res, i) => (
-                          <div key={i} className="flex items-center gap-2 bg-gray-800/30 px-2 py-1 rounded">
-                            <span className="text-orange-300 font-mono text-sm">{res.name}:</span>
-                            <div className="flex gap-1">
-                              {Array.from({ length: res.max }).map((_, j) => (
-                                <button key={j} onClick={() => j < res.max - res.used ? useResource(i) : restoreResource(i)} className={`w-4 h-4 rounded-sm border transition-all ${j < res.max - res.used ? 'bg-orange-500 border-orange-400' : 'bg-gray-700 border-gray-600'}`} />
-                              ))}
-                            </div>
-                            {res.shortRest && <span className="text-gray-500 text-xs">(SR)</span>}
-                            <button onClick={() => removeResource(i)} className="text-gray-600 hover:text-red-400 text-xs">×</button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
 
                   {/* Spacer to push content up */}
                   <div className="flex-1" />
