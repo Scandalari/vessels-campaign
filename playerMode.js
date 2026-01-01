@@ -156,6 +156,12 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
 
   // ==================== CHARACTER SELECTION ====================
   const selectPartyMember = (member) => {
+    // If we already have this character in local state, keep it (preserves current changes)
+    if (playerCharacter && playerCharacter.id === member.id) {
+      setPlayerSetupStep(null);
+      return;
+    }
+    
     // If we have a saved character that matches this party member, restore it
     if (savedCharacter && savedCharacter.id === member.id) {
       setPlayerCharacter(savedCharacter);
@@ -711,6 +717,10 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
 
   // ==================== EXIT ====================
   const exitPlayerMode = () => {
+    // Ensure character is saved before exiting
+    if (playerCharacter) {
+      onSaveCharacter(playerCharacter);
+    }
     setCurrentView('main');
     onExit();
   };
