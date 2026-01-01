@@ -1328,30 +1328,45 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
       ) : (
         /* ==================== MAIN VIEW (GAMEPLAY) ==================== */
         <div className="flex-1 flex flex-col gap-2 overflow-auto hide-scrollbar">
-          {/* Quick Stats Bar */}
-          <div className="flex gap-2">
-            <div className="flex-1 bg-gray-900/50 border border-green-500/30 p-2 rounded">
-              <div className="flex items-center gap-2">
-                <span className="text-green-400 font-mono text-sm">HP</span>
-                <span className="text-2xl font-mono font-bold" style={{color: playerCharacter.hp.current <= playerCharacter.hp.max * 0.25 ? '#f87171' : playerCharacter.hp.current <= playerCharacter.hp.max * 0.5 ? '#facc15' : '#4ade80'}}>{playerCharacter.hp.current}</span>
-                <span className="text-gray-500 font-mono">/ {playerCharacter.hp.max}</span>
-                {playerCharacter.hp.temp > 0 && <span className="text-cyan-400 font-mono text-sm">+{playerCharacter.hp.temp}</span>}
+          {/* HP & Damage */}
+          <div className="bg-gray-900/50 border border-green-500/30 p-2 rounded">
+            <div className="flex items-center gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-green-400 font-mono text-sm">HP</span>
+                  <span className="text-2xl font-mono font-bold" style={{color: playerCharacter.hp.current <= playerCharacter.hp.max * 0.25 ? '#f87171' : playerCharacter.hp.current <= playerCharacter.hp.max * 0.5 ? '#facc15' : '#4ade80'}}>{playerCharacter.hp.current}</span>
+                  <span className="text-gray-500 font-mono">/ {playerCharacter.hp.max}</span>
+                  {playerCharacter.hp.temp > 0 && <span className="text-cyan-400 font-mono text-sm">+{playerCharacter.hp.temp} temp</span>}
+                </div>
+                <div className="h-2 bg-gray-800 rounded overflow-hidden">
+                  <div className="h-full transition-all duration-300" style={{width: `${(playerCharacter.hp.current / playerCharacter.hp.max) * 100}%`, background: playerCharacter.hp.current <= playerCharacter.hp.max * 0.25 ? '#f87171' : playerCharacter.hp.current <= playerCharacter.hp.max * 0.5 ? '#facc15' : '#4ade80'}} />
+                </div>
               </div>
-              <div className="h-1.5 bg-gray-800 rounded overflow-hidden mt-1">
-                <div className="h-full transition-all duration-300" style={{width: `${(playerCharacter.hp.current / playerCharacter.hp.max) * 100}%`, background: playerCharacter.hp.current <= playerCharacter.hp.max * 0.25 ? '#f87171' : playerCharacter.hp.current <= playerCharacter.hp.max * 0.5 ? '#facc15' : '#4ade80'}} />
+              <div className="flex flex-col gap-1">
+                <div className="flex gap-1">
+                  <input type="number" value={damageInput} onChange={(e) => setDamageInput(e.target.value)} placeholder="#" className="w-14 bg-gray-800 border border-gray-600 text-gray-300 px-2 py-1 text-center font-mono text-sm" />
+                  <button onClick={() => applyDamage(damageInput)} className="px-2 py-1 bg-red-900/30 border border-red-500/50 text-red-300 font-mono text-xs">DMG</button>
+                  <button onClick={() => applyHealing(damageInput)} className="px-2 py-1 bg-green-900/30 border border-green-500/50 text-green-300 font-mono text-xs">HEAL</button>
+                </div>
+                <div className="flex gap-1">
+                  <button onClick={() => updatePlayerHP('temp', (parseInt(damageInput) || 0))} className="flex-1 px-2 py-1 bg-cyan-900/30 border border-cyan-500/50 text-cyan-300 font-mono text-xs">+ TEMP</button>
+                  <button onClick={() => updatePlayerHP('temp', 0)} className="px-2 py-1 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-xs">CLR</button>
+                </div>
               </div>
-            </div>
-            <div className="bg-gray-900/50 border border-cyan-500/30 p-2 rounded text-center">
-              <div className="text-gray-500 font-mono text-xs">AC</div>
-              <div className="text-cyan-300 font-mono text-xl">{playerCharacter.ac}</div>
-            </div>
-            <div className="bg-gray-900/50 border border-cyan-500/30 p-2 rounded text-center">
-              <div className="text-gray-500 font-mono text-xs">INIT</div>
-              <div className="text-cyan-300 font-mono text-xl">{formatMod(playerCharacter.initiative)}</div>
-            </div>
-            <div className="bg-gray-900/50 border border-cyan-500/30 p-2 rounded text-center">
-              <div className="text-gray-500 font-mono text-xs">SPEED</div>
-              <div className="text-cyan-300 font-mono text-xl">{playerCharacter.speed}</div>
+              <div className="flex gap-2">
+                <div className="bg-gray-800/50 border border-cyan-500/30 px-3 py-1 rounded text-center">
+                  <div className="text-gray-500 font-mono text-xs">AC</div>
+                  <div className="text-cyan-300 font-mono text-lg">{playerCharacter.ac}</div>
+                </div>
+                <div className="bg-gray-800/50 border border-cyan-500/30 px-3 py-1 rounded text-center">
+                  <div className="text-gray-500 font-mono text-xs">INIT</div>
+                  <div className="text-cyan-300 font-mono text-lg">{formatMod(playerCharacter.initiative)}</div>
+                </div>
+                <div className="bg-gray-800/50 border border-cyan-500/30 px-3 py-1 rounded text-center">
+                  <div className="text-gray-500 font-mono text-xs">SPD</div>
+                  <div className="text-cyan-300 font-mono text-lg">{playerCharacter.speed}</div>
+                </div>
+              </div>
             </div>
           </div>
 

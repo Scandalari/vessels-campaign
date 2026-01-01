@@ -1,6 +1,6 @@
 {
-  "name": "XP Tracker",
-  "short_name": "XP Tracker",
+  "name": "Vessels Campaign Tool",
+  "short_name": "Vessels",
   "start_url": "index.html",
   "display": "standalone",
   "background_color": "#0a0a0f",
