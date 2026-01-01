@@ -125,6 +125,14 @@ function PlayerMode({ party, partyLevel, onExit, savedCharacter, onSaveCharacter
 
   // ==================== CHARACTER SELECTION ====================
   const selectPartyMember = (member) => {
+    // If we have a saved character that matches this party member, restore it
+    if (savedCharacter && savedCharacter.id === member.id) {
+      setPlayerCharacter(savedCharacter);
+      setPlayerSetupStep(null);
+      return;
+    }
+    
+    // Otherwise create a new character from the party member
     const char = createDefaultPlayerCharacter(member);
     const initialized = initializeCharacterResources(char);
     setPlayerCharacter(initialized);
