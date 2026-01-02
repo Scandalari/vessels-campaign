@@ -73,6 +73,18 @@
       const [selectedCR, setSelectedCR] = useState(null);
       const [lootResults, setLootResults] = useState(null);
 
+      // ==================== NPC ROLODEX STATE ====================
+      const [showNpcRolodex, setShowNpcRolodex] = useState(false);
+      const [npcFolders, setNpcFolders] = useState([]);
+      const [npcs, setNpcs] = useState([]);
+      const [selectedNpcFolder, setSelectedNpcFolder] = useState(null);
+      const [addingNpcFolder, setAddingNpcFolder] = useState(null);
+      const [addingNpc, setAddingNpc] = useState(null);
+      const [viewingNpc, setViewingNpc] = useState(null);
+      const [editingNpc, setEditingNpc] = useState(null);
+      const [confirmDeleteNpc, setConfirmDeleteNpc] = useState(null);
+      const [confirmDeleteFolder, setConfirmDeleteFolder] = useState(null);
+
       // ==================== PLAYER MODE STATE ====================
       const [isPlayerMode, setIsPlayerMode] = useState(false);
       const [playerCharacter, setPlayerCharacter] = useState(null);
@@ -180,7 +192,7 @@
 
       // ==================== DATA MANAGEMENT ====================
       const exportData = () => {
-        const data = { totalXp, sessionHistory, party, minions, isPlayerMode, playerCharacter, exportDate: new Date().toISOString() };
+        const data = { totalXp, sessionHistory, party, minions, isPlayerMode, playerCharacter, npcFolders, npcs, exportDate: new Date().toISOString() };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -204,6 +216,8 @@
               if (data.minions) setMinions(data.minions);
               if (data.isPlayerMode !== undefined) setIsPlayerMode(data.isPlayerMode);
               if (data.playerCharacter) setPlayerCharacter(data.playerCharacter);
+              if (data.npcFolders) setNpcFolders(data.npcFolders);
+              if (data.npcs) setNpcs(data.npcs);
               alert('Import successful!');
             } else {
               alert('Invalid backup file format');
@@ -226,6 +240,8 @@
         setMinions([]);
         setPlayerCharacter(null);
         setIsPlayerMode(false);
+        setNpcFolders([]);
+        setNpcs([]);
         setConfirmDelete(false);
       };
 
@@ -242,6 +258,8 @@
             // Player mode data
             if (data.isPlayerMode !== undefined) setIsPlayerMode(data.isPlayerMode);
             if (data.playerCharacter) setPlayerCharacter(data.playerCharacter);
+            if (data.npcFolders) setNpcFolders(data.npcFolders);
+            if (data.npcs) setNpcs(data.npcs);
           }
         } catch (e) { console.log('No saved data found'); }
         setLoaded(true);
@@ -252,10 +270,10 @@
         try {
           localStorage.setItem('xp-tracker-data', JSON.stringify({ 
             totalXp, sessionHistory, party, minions,
-            isPlayerMode, playerCharacter 
+            isPlayerMode, playerCharacter, npcFolders, npcs 
           }));
         } catch (e) { console.error('Failed to save:', e); }
-      }, [totalXp, sessionHistory, party, minions, loaded, isPlayerMode, playerCharacter]);
+      }, [totalXp, sessionHistory, party, minions, loaded, isPlayerMode, playerCharacter, npcFolders, npcs]);
 
       // ==================== XP ACTIONS ====================
       const addXp = (name, baseXp) => {
@@ -639,6 +657,72 @@
         }
       };
 
+      // ==================== NPC ROLODEX ====================
+      const addNpcFolder = (name) => {
+        if (!name.trim()) return;
+        const newFolder = { id: Date.now(), name: name.trim() };
+        setNpcFolders(p => [...p, newFolder]);
+        setAddingNpcFolder(null);
+      };
+
+      const deleteNpcFolder = (folderId) => {
+        if (confirmDeleteFolder === folderId) {
+          setNpcFolders(p => p.filter(f => f.id !== folderId));
+          setNpcs(p => p.filter(n => n.folderId !== folderId));
+          if (selectedNpcFolder === folderId) setSelectedNpcFolder(null);
+          setConfirmDeleteFolder(null);
+        } else {
+          setConfirmDeleteFolder(folderId);
+          setTimeout(() => setConfirmDeleteFolder(p => p === folderId ? null : p), 3000);
+        }
+      };
+
+      const addNpc = () => {
+        if (!addingNpc.name.trim()) return;
+        const newNpc = {
+          id: Date.now(),
+          folderId: selectedNpcFolder,
+          name: addingNpc.name.trim(),
+          physicalDescription: addingNpc.physicalDescription.trim(),
+          personality: addingNpc.personality.trim()
+        };
+        setNpcs(p => [...p, newNpc]);
+        setAddingNpc(null);
+      };
+
+      const updateNpc = () => {
+        if (!editingNpc.name.trim()) return;
+        setNpcs(p => p.map(n => n.id !== editingNpc.id ? n : {
+          ...n,
+          name: editingNpc.name.trim(),
+          physicalDescription: editingNpc.physicalDescription.trim(),
+          personality: editingNpc.personality.trim()
+        }));
+        setViewingNpc(editingNpc);
+        setEditingNpc(null);
+      };
+
+      const deleteNpc = (npcId) => {
+        if (confirmDeleteNpc === npcId) {
+          setNpcs(p => p.filter(n => n.id !== npcId));
+          setViewingNpc(null);
+          setConfirmDeleteNpc(null);
+        } else {
+          setConfirmDeleteNpc(npcId);
+          setTimeout(() => setConfirmDeleteNpc(p => p === npcId ? null : p), 3000);
+        }
+      };
+
+      const resetNpcRolodex = () => {
+        setSelectedNpcFolder(null);
+        setAddingNpcFolder(null);
+        setAddingNpc(null);
+        setViewingNpc(null);
+        setEditingNpc(null);
+        setConfirmDeleteNpc(null);
+        setConfirmDeleteFolder(null);
+      };
+
       // ==================== RENDER ====================
       const level = getLevel(totalXp);
       const progress = ((totalXp - getPrevThreshold(totalXp)) / (getNextThreshold(totalXp) - getPrevThreshold(totalXp))) * 100;
@@ -658,16 +742,16 @@
           {/* Header - Only shown in DM mode (Player mode has its own header) */}
           {!isPlayerMode && (
             <div className="flex items-center justify-between border-b border-cyan-500/30 pb-1 mb-2">
-              <button onClick={() => { setShowHistory(p => !p); setShowParty(false); setShowCombat(false); setShowShopLoot(false); setConfirmDelete(false); }} className={`px-2 py-1 text-xs font-mono border transition-all ${showHistory ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300' : 'bg-gray-800/50 border-gray-600 text-gray-400 hover:border-cyan-500/50'}`}>
+              <button onClick={() => { setShowHistory(p => !p); setShowParty(false); setShowCombat(false); setShowShopLoot(false); setShowNpcRolodex(false); setConfirmDelete(false); }} className={`px-2 py-1 text-xs font-mono border transition-all ${showHistory ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300' : 'bg-gray-800/50 border-gray-600 text-gray-400 hover:border-cyan-500/50'}`}>
                 {showHistory ? '◀ BACK' : `HISTORY (${sessionHistory.length})`}
               </button>
               <div className="flex items-center gap-2">
                 <button onClick={togglePlayerMode} className="px-2 py-1 text-xs font-mono border transition-all bg-fuchsia-900/30 border-fuchsia-500/50 text-fuchsia-300 hover:bg-fuchsia-500/20 hover:border-fuchsia-400">PLAYER</button>
                 <h1 className="text-xl font-bold tracking-widest" style={{textShadow: '0 0 20px rgba(0,255,255,0.5)', color: '#00ffff'}}>
-                  {showHistory ? 'SESSION LOGS' : showParty ? 'PARTY CONFIG' : showCombat ? 'COMBAT' : showShopLoot ? 'REQUISITIONS' : `SESSION ${getSessionWord(getNextSessionNumber())}`}
+                  {showHistory ? 'SESSION LOGS' : showParty ? 'PARTY CONFIG' : showCombat ? 'COMBAT' : showShopLoot ? 'REQUISITIONS' : showNpcRolodex ? 'CHARACTERS' : `SESSION ${getSessionWord(getNextSessionNumber())}`}
                 </h1>
               </div>
-              <button onClick={() => { setShowParty(p => !p); setShowHistory(false); setShowCombat(false); setShowShopLoot(false); setAddingPlayer(null); }} className={`px-2 py-1 text-xs font-mono border transition-all ${showParty ? 'bg-fuchsia-500/20 border-fuchsia-400 text-fuchsia-300' : 'bg-gray-800/50 border-gray-600 text-gray-400 hover:border-fuchsia-500/50'}`}>
+              <button onClick={() => { setShowParty(p => !p); setShowHistory(false); setShowCombat(false); setShowShopLoot(false); setShowNpcRolodex(false); setAddingPlayer(null); }} className={`px-2 py-1 text-xs font-mono border transition-all ${showParty ? 'bg-fuchsia-500/20 border-fuchsia-400 text-fuchsia-300' : 'bg-gray-800/50 border-gray-600 text-gray-400 hover:border-fuchsia-500/50'}`}>
                 {showParty ? '◀ BACK' : `PARTY (${party.length})`}
               </button>
             </div>
@@ -682,6 +766,104 @@
               onSaveCharacter={savePlayerCharacter}
               onAddToParty={(newMember) => setParty(p => [...p, newMember])}
             />
+          ) : showNpcRolodex ? (
+            <div className="flex-1 overflow-auto flex flex-col">
+              {editingNpc ? (
+                <div className="flex-1 flex flex-col gap-4 p-4">
+                  <span className="text-amber-400 font-mono text-sm text-center">EDIT CHARACTER</span>
+                  <input type="text" value={editingNpc.name} onChange={(e) => setEditingNpc(p => ({ ...p, name: e.target.value }))} className="bg-gray-900 border border-amber-500/50 text-amber-100 px-4 py-2 font-mono focus:outline-none focus:border-amber-400" placeholder="Name..." />
+                  <textarea value={editingNpc.physicalDescription} onChange={(e) => setEditingNpc(p => ({ ...p, physicalDescription: e.target.value }))} className="bg-gray-900 border border-amber-500/50 text-amber-100 px-4 py-2 font-mono focus:outline-none focus:border-amber-400 flex-1 min-h-[100px] resize-none" placeholder="Physical Description..." />
+                  <textarea value={editingNpc.personality} onChange={(e) => setEditingNpc(p => ({ ...p, personality: e.target.value }))} className="bg-gray-900 border border-amber-500/50 text-amber-100 px-4 py-2 font-mono focus:outline-none focus:border-amber-400 flex-1 min-h-[100px] resize-none" placeholder="Personality..." />
+                  <div className="flex gap-2">
+                    <button onClick={() => setEditingNpc(null)} className="flex-1 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">CANCEL</button>
+                    <button onClick={updateNpc} disabled={!editingNpc.name.trim()} className="flex-1 py-2 bg-amber-500/20 border border-amber-400 text-amber-300 font-mono text-sm disabled:opacity-50">SAVE</button>
+                  </div>
+                </div>
+              ) : viewingNpc ? (
+                <div className="flex-1 flex flex-col gap-3 p-2">
+                  <div className="flex items-center justify-between">
+                    <button onClick={() => setViewingNpc(null)} className="px-3 py-1 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">◀ BACK</button>
+                    <h2 className="text-xl font-bold text-amber-300 font-mono">{viewingNpc.name}</h2>
+                    <div className="flex gap-1">
+                      <button onClick={() => setEditingNpc({...viewingNpc})} className="px-3 py-1 bg-amber-900/30 border border-amber-500/50 text-amber-300 font-mono text-sm hover:bg-amber-500/20">EDIT</button>
+                      <button onClick={() => deleteNpc(viewingNpc.id)} className={`px-3 py-1 border font-mono text-sm transition-all ${confirmDeleteNpc === viewingNpc.id ? 'bg-red-500/30 border-red-400 text-red-200 animate-pulse' : 'bg-red-900/30 border-red-500/50 text-red-400 hover:bg-red-500/20'}`}>{confirmDeleteNpc === viewingNpc.id ? 'CONFIRM?' : 'DELETE'}</button>
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-auto space-y-4">
+                    <div className="bg-gray-900/50 border border-cyan-500/20 p-3 rounded">
+                      <h3 className="text-cyan-400 font-mono text-sm mb-2">PHYSICAL DESCRIPTION</h3>
+                      <p className="text-gray-300 whitespace-pre-wrap">{viewingNpc.physicalDescription || <span className="text-gray-600 italic">No description</span>}</p>
+                    </div>
+                    <div className="bg-gray-900/50 border border-fuchsia-500/20 p-3 rounded">
+                      <h3 className="text-fuchsia-400 font-mono text-sm mb-2">PERSONALITY</h3>
+                      <p className="text-gray-300 whitespace-pre-wrap">{viewingNpc.personality || <span className="text-gray-600 italic">No personality notes</span>}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : addingNpc ? (
+                <div className="flex-1 flex flex-col gap-4 p-4">
+                  <span className="text-amber-400 font-mono text-sm text-center">NEW CHARACTER IN: {npcFolders.find(f => f.id === selectedNpcFolder)?.name}</span>
+                  <input type="text" value={addingNpc.name} onChange={(e) => setAddingNpc(p => ({ ...p, name: e.target.value }))} className="bg-gray-900 border border-amber-500/50 text-amber-100 px-4 py-2 font-mono focus:outline-none focus:border-amber-400" placeholder="Name..." autoFocus />
+                  <textarea value={addingNpc.physicalDescription} onChange={(e) => setAddingNpc(p => ({ ...p, physicalDescription: e.target.value }))} className="bg-gray-900 border border-amber-500/50 text-amber-100 px-4 py-2 font-mono focus:outline-none focus:border-amber-400 flex-1 min-h-[100px] resize-none" placeholder="Physical Description..." />
+                  <textarea value={addingNpc.personality} onChange={(e) => setAddingNpc(p => ({ ...p, personality: e.target.value }))} className="bg-gray-900 border border-amber-500/50 text-amber-100 px-4 py-2 font-mono focus:outline-none focus:border-amber-400 flex-1 min-h-[100px] resize-none" placeholder="Personality..." />
+                  <div className="flex gap-2">
+                    <button onClick={() => setAddingNpc(null)} className="flex-1 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">CANCEL</button>
+                    <button onClick={addNpc} disabled={!addingNpc.name.trim()} className="flex-1 py-2 bg-amber-500/20 border border-amber-400 text-amber-300 font-mono text-sm disabled:opacity-50">ADD CHARACTER</button>
+                  </div>
+                </div>
+              ) : addingNpcFolder ? (
+                <div className="flex-1 flex flex-col items-center justify-center gap-4">
+                  <span className="text-amber-400 font-mono text-sm">NEW FOLDER</span>
+                  <input type="text" value={addingNpcFolder.name} onChange={(e) => setAddingNpcFolder(p => ({ ...p, name: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter' && addingNpcFolder.name.trim()) addNpcFolder(addingNpcFolder.name); if (e.key === 'Escape') setAddingNpcFolder(null); }} className="bg-gray-900 border border-amber-500/50 text-amber-100 px-4 py-2 font-mono text-center text-lg focus:outline-none focus:border-amber-400" placeholder="Folder name..." autoFocus />
+                  <div className="flex gap-2">
+                    <button onClick={() => setAddingNpcFolder(null)} className="px-4 py-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">CANCEL</button>
+                    <button onClick={() => addNpcFolder(addingNpcFolder.name)} disabled={!addingNpcFolder.name.trim()} className="px-4 py-2 bg-amber-500/20 border border-amber-400 text-amber-300 font-mono text-sm disabled:opacity-50">CREATE</button>
+                  </div>
+                </div>
+              ) : selectedNpcFolder !== null ? (
+                <div className="flex-1 flex flex-col">
+                  <div className="flex items-center justify-between mb-2">
+                    <button onClick={() => setSelectedNpcFolder(null)} className="px-3 py-1 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">◀ FOLDERS</button>
+                    <span className="text-amber-300 font-mono text-lg">{npcFolders.find(f => f.id === selectedNpcFolder)?.name}</span>
+                    <button onClick={() => setAddingNpc({ name: '', physicalDescription: '', personality: '' })} className="px-3 py-1 bg-amber-900/30 border border-amber-500/50 text-amber-300 font-mono text-sm hover:bg-amber-500/20">+ CHARACTER</button>
+                  </div>
+                  {npcs.filter(n => n.folderId === selectedNpcFolder).length === 0 ? (
+                    <div className="flex-1 flex items-center justify-center text-gray-500 font-mono">NO CHARACTERS IN THIS FOLDER</div>
+                  ) : (
+                    <div className="flex-1 overflow-auto grid grid-cols-3 gap-2 content-start">
+                      {npcs.filter(n => n.folderId === selectedNpcFolder).map(npc => (
+                        <button key={npc.id} onClick={() => setViewingNpc(npc)} className="bg-gray-900/50 border border-amber-500/30 p-3 rounded text-left hover:bg-amber-500/10 hover:border-amber-400 transition-all">
+                          <div className="text-amber-300 font-mono font-bold truncate">{npc.name}</div>
+                          <div className="text-gray-500 text-xs mt-1 line-clamp-2">{npc.physicalDescription || 'No description'}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex-1 flex flex-col">
+                  <button onClick={() => setAddingNpcFolder({ name: '' })} className="w-full py-2 mb-2 bg-amber-900/30 border border-amber-500/50 text-amber-300 font-mono text-sm hover:bg-amber-500/20 hover:border-amber-400 transition-all">+ NEW FOLDER</button>
+                  {npcFolders.length === 0 ? (
+                    <div className="flex-1 flex items-center justify-center text-gray-500 font-mono">NO FOLDERS YET</div>
+                  ) : (
+                    <div className="flex-1 overflow-auto grid grid-cols-3 gap-2 content-start">
+                      {npcFolders.map(folder => (
+                        <div key={folder.id} className="bg-gray-900/50 border border-amber-500/30 p-3 rounded flex flex-col">
+                          <button onClick={() => setSelectedNpcFolder(folder.id)} className="flex-1 text-left hover:opacity-80 transition-all">
+                            <div className="text-amber-300 font-mono font-bold">📁 {folder.name}</div>
+                            <div className="text-gray-500 text-xs mt-1">{npcs.filter(n => n.folderId === folder.id).length} characters</div>
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); deleteNpcFolder(folder.id); }} className={`mt-2 px-2 py-1 border font-mono text-xs transition-all ${confirmDeleteFolder === folder.id ? 'bg-red-500/30 border-red-400 text-red-200 animate-pulse' : 'bg-gray-800/50 border-gray-700 text-gray-500 hover:border-red-500/50 hover:text-red-400'}`}>
+                            {confirmDeleteFolder === folder.id ? 'CONFIRM?' : 'DELETE'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <button onClick={() => { resetNpcRolodex(); setShowNpcRolodex(false); }} className="w-full py-2 mt-2 bg-gray-800/50 border border-gray-600 text-gray-400 font-mono text-sm">◀ BACK TO MAIN</button>
+                </div>
+              )}
+            </div>
           ) : showShopLoot ? (
             <div className="flex-1 overflow-auto flex flex-col">
               {shopResults !== null ? (
@@ -1370,8 +1552,9 @@
               </div>
 
               <div className="flex gap-2">
-                <button onClick={() => { setShowCombat(true); setShowHistory(false); setShowParty(false); setShowShopLoot(false); }} className="flex-1 py-2 bg-red-900/30 border border-red-500/30 text-red-300 font-mono text-sm hover:bg-red-500/20 hover:border-red-400 transition-all">⚔ COMBAT</button>
-                <button onClick={() => { setShowShopLoot(true); setShowHistory(false); setShowParty(false); setShowCombat(false); resetShopLoot(); }} className="flex-1 py-2 bg-green-900/30 border border-green-500/30 text-green-300 font-mono text-sm hover:bg-green-500/20 hover:border-green-400 transition-all">📦 REQUISITIONS</button>
+                <button onClick={() => { setShowCombat(true); setShowHistory(false); setShowParty(false); setShowShopLoot(false); setShowNpcRolodex(false); }} className="flex-1 py-2 bg-red-900/30 border border-red-500/30 text-red-300 font-mono text-sm hover:bg-red-500/20 hover:border-red-400 transition-all">⚔ COMBAT</button>
+                <button onClick={() => { setShowShopLoot(true); setShowHistory(false); setShowParty(false); setShowCombat(false); setShowNpcRolodex(false); resetShopLoot(); }} className="flex-1 py-2 bg-green-900/30 border border-green-500/30 text-green-300 font-mono text-sm hover:bg-green-500/20 hover:border-green-400 transition-all">📦 REQUISITIONS</button>
+                <button onClick={() => { setShowNpcRolodex(true); setShowHistory(false); setShowParty(false); setShowCombat(false); setShowShopLoot(false); resetNpcRolodex(); }} className="flex-1 py-2 bg-amber-900/30 border border-amber-500/30 text-amber-300 font-mono text-sm hover:bg-amber-500/20 hover:border-amber-400 transition-all">👤 CHARACTERS</button>
               </div>
             </>
           )}
